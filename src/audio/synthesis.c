@@ -678,7 +678,7 @@ u64 *synthesis_process_notes(s16 *aiBuf, s32 bufLen, u64 *cmd) {
         if (IS_BANK_LOAD_COMPLETE(note->bankId) == FALSE) {
 #endif
             gAudioErrorFlags = (note->bankId << 8) + noteIndex + 0x1000000;
-        } else if (note->enabled == TRUE) {
+        } else if (note->enabled == TRUE && note->synthesisBuffers != NULL) {
 #else
         if (note->noteSubEu.enabled == FALSE) {
             return cmd;
@@ -751,7 +751,7 @@ u64 *synthesis_process_notes(s16 *aiBuf, s32 bufLen, u64 *cmd) {
                 flags = 0;
             }
 #endif
-            else if(note->synthesisBuffers != NULL) {
+            else {
                 // ADPCM note
 
 #ifdef VERSION_EU
