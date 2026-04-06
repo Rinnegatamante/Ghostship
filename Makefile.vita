@@ -1,0 +1,165 @@
+TARGET := Ghostship
+
+TITLE := GHSTSHP01
+
+SOURCE_FOLDERS := 
+
+TORCH_INCLUDES := Torch/src Torch/src/utils Torch/lib Torch Torch/src/factories \
+	Torch/lib/n64graphics
+
+TORCH_SOURCES := Torch/src Torch/src/factories Torch/src/factories/sm64 \
+	Torch/src/n64 Torch/src/preprocess Torch/src/types Torch/src/utils Torch/lib/libmio0 \
+	Torch/src/archive Torch/lib/binarytools Torch/lib/libyay0 Torch/lib/n64graphics \
+	Torch/src/factories/naudio/v0 Torch/src/factories/naudio/v1
+
+LUS_INCLUDES := libultraship/include libultraship/src libultraship/src/utils/binarytools libultraship/src/resource/type \
+	libultraship/src/resource libultraship/src/window libultraship/src/window/gui libultraship/src/audio libultraship/src/graphic \
+	libultraship/src libultraship/imgui libultraship/imgui/backends libultraship/src/public/bridge libultraship/include/libultraship \
+	libultraship/src/resource/factory
+
+LUS_SOURCES := libultraship/src libultraship/src/audio libultraship/src/config libultraship/src/graphic/Fast3D/debug \
+	libultraship/src/debug libultraship/src/menu libultraship/src/utils libultraship/src/utils/binarytools \
+	libultraship/src/resource libultraship/src/resource/type libultraship/src/resource/factory \
+	libultraship/src/window libultraship/src/window/gui libultraship/src/config libultraship/src/public \
+	libultraship/src/public/libultra libultraship/src/public/bridge libultraship/src/graphic/Fast3D \
+	libultraship/src/log libultraship/imgui libultraship/src/controller/controldevice libultraship/src/window/gui/resource \
+	libultraship/src/controller/controldevice/controller libultraship/src/controller/controldevice/controller/mapping \
+	libultraship/src/controller/controldevice/controller/mapping/sdl libultraship/src/controller/controldevice/controller/mapping/factories \
+	libultraship/src/controller/controldevice/controller/mapping/keyboard libultraship/src/controller/controldevice/controller/mapping/mouse \
+	libultraship/src/controller/deviceindex libultraship/src/controller/controldeck libultraship/src/resource/archive
+
+SOURCES := $(LUS_SOURCES) $(TORCH_SOURCES) \
+	src/audio src/buffers src/engine src/game src/goddard src/menu \
+	src/port src/port/data src/port/hooks src/port/interpolation src/port/Rando \
+	src/port/util src/port/console src/port/game src/port/importer src/port/mods src/port/ui
+
+INCLUDES := $(LUS_INCLUDES) $(TORCH_INCLUDES) \
+	include port src . spdlog/include
+
+LIBS = -lstorm -lgfxd -lbzip2 -lzip -lzstd -lz -lyaml-cpp -llzma -lssl -lcrypto -lstdc++ -lpng \
+	-Wl,--whole-archive -lpthread -Wl,--no-whole-archive \
+	-ltinyxml2 -lSDL2 -lvorbisfile -lvorbis -logg -lvitaGL -lvitashark -lSceShaccCgExt -ltaihen_stub -lmathneon -lSceAudioIn_stub \
+	-lSceIme_stub -lSceKernelDmacMgr_stub -lSceGxm_stub -lSceDisplay_stub -lSceTouch_stub -lSceHid_stub -lSceCtrl_stub -lSceNet_stub \
+	-lSceNetCtl_stub -lSceCommonDialog_stub -lSceAudio_stub -lSceSysmodule_stub -lSceMotion_stub -lSceAppUtil_stub \
+	-lSceAppMgr_stub -lSceShaccCg_stub -lScePower_stub
+
+FINAL_SOURCES := f
+
+CFILES := $(foreach dir,$(SOURCES), $(wildcard $(dir)/*.c))
+CPPFILES := $(foreach dir,$(SOURCES), $(wildcard $(dir)/*.cpp))
+
+OBJS := $(CFILES:.c=.o) $(CPPFILES:.cpp=.o) \
+	libultraship/imgui/backends/imgui_impl_opengl3.o \
+	libultraship/imgui/backends/imgui_impl_sdl2.o
+
+OBJS_PREPARE := $(CFILES:.c=.ok) $(CPPFILES:.cpp=.ok) \
+	libultraship/imgui/backends/imgui_impl_opengl3.ok \
+	libultraship/imgui/backends/imgui_impl_sdl2.ok
+
+OBJS_CLEAN := $(CFILES:.c=.oc) $(CPPFILES:.cpp=.oc) \
+	libultraship/imgui/backends/imgui_impl_opengl3.oc \
+	libultraship/imgui/backends/imgui_impl_sdl2.oc
+
+FINAL_OBJS := $(foreach dir,$(FINAL_SOURCES), $(wildcard $(dir)/*.o))
+
+GFX_UCODE := F3DEX_GBI_2
+
+CVAR_PREFIX_RANDOMIZER_ENHANCEMENT := gRandoEnhancements
+CVAR_PREFIX_RANDOMIZER_SETTING     := gRandoSettings
+CVAR_PREFIX_COSMETIC               := gCosmetics
+CVAR_PREFIX_AUDIO                  := gAudioEditor
+CVAR_PREFIX_CHEAT                  := gCheats
+CVAR_PREFIX_ENHANCEMENT            := gEnhancements
+CVAR_PREFIX_SETTING                := gSettings
+CVAR_PREFIX_WINDOW                 := gOpenWindows
+CVAR_PREFIX_TRACKER                := gTrackers
+CVAR_PREFIX_DEVELOPER_TOOLS        := gDeveloperTools
+CVAR_PREFIX_GENERAL                := gGeneral
+CVAR_PREFIX_REMOTE                 := gRemote
+
+PREFIX = arm-vita-eabi
+CC  = $(PREFIX)-gcc
+CXX = $(PREFIX)-g++
+
+CFLAGS = -fno-lto -g -Wl,-q -O3 -ffast-math -fno-short-enums -fsigned-char \
+	$(foreach dir,$(INCLUDES),-I$(dir)) \
+	-Wno-narrowing -DIMGUI_IMPL_OPENGL_ES2 -DSPDLOG_ACTIVE_LEVEL=6 \
+	-I$(VITASDK)/$(PREFIX)/include/SDL2 -DENABLE_OPENGL -D$(GFX_UCODE) \
+	-D_LANGUAGE_C -D_USE_MATH_DEFINES -DCIMGUI_DEFINE_ENUMS_AND_STRUCTS \
+	-DNON_MATCHING=1 -DNON_EQUIVALENT=1 -DAVOID_UB=1 \
+	-DVERSION_US=1 -DENABLE_RUMBLE=1 -DIMGUI_DEFINE_MATH_OPERATORS \
+	-DCVAR_PREFIX_RANDOMIZER_ENHANCEMENT=\"$(CVAR_PREFIX_RANDOMIZER_ENHANCEMENT)\" \
+	-DCVAR_PREFIX_RANDOMIZER_SETTING=\"$(CVAR_PREFIX_RANDOMIZER_SETTING)\" \
+	-DCVAR_PREFIX_COSMETIC=\"$(CVAR_PREFIX_COSMETIC)\" \
+	-DCVAR_PREFIX_AUDIO=\"$(CVAR_PREFIX_AUDIO)\" \
+	-DCVAR_PREFIX_CHEAT=\"$(CVAR_PREFIX_CHEAT)\" \
+	-DCVAR_PREFIX_ENHANCEMENT=\"$(CVAR_PREFIX_ENHANCEMENT)\" \
+	-DCVAR_PREFIX_SETTING=\"$(CVAR_PREFIX_SETTING)\" \
+	-DCVAR_PREFIX_WINDOW=\"$(CVAR_PREFIX_WINDOW)\" \
+	-DCVAR_PREFIX_TRACKER=\"$(CVAR_PREFIX_TRACKER)\" \
+	-DCVAR_PREFIX_DEVELOPER_TOOLS=\"$(CVAR_PREFIX_DEVELOPER_TOOLS)\" \
+	-DCVAR_PREFIX_GENERAL=\"$(CVAR_PREFIX_GENERAL)\" \
+	-DCVAR_PREFIX_REMOTE=\"$(CVAR_PREFIX_REMOTE)\" \
+	-DCVAR_VSYNC_ENABLED=\"gVsyncEnabled\" \
+	-DCVAR_Z_FIGHTING_MODE=\"gZFightingMode\" \
+	-DCVAR_NEW_FILE_DROPPED=\"gNewFileDropped\" \
+	-DCVAR_DROPPED_FILE=\"gDroppedFile\" \
+	-DCVAR_INTERNAL_RESOLUTION=\"gInternalResolution\" \
+	-DCVAR_MSAA_VALUE=\"gMSAAValue\" \
+	-DCVAR_SDL_WINDOWED_FULLSCREEN=\"gSdlWindowedFullscreen\" \
+	-DCVAR_TEXTURE_FILTER=\"gTextureFilter\" \
+	-DCVAR_IMGUI_CONTROLLER_NAV=\"gControlNav\" \
+	-DCVAR_CONSOLE_WINDOW_OPEN=\"gConsoleEnabled\" \
+	-DCVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\" \
+	-DCVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\"gControllerDisconnectedWindowEnabled\" \
+	-DCVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\"gControllerReorderingWindowEnabled\" \
+	-DCVAR_GFX_DEBUGGER_WINDOW_OPEN=\"gGfxDebuggerEnabled\" \
+	-DCVAR_STATS_WINDOW_OPEN=\"gStatsEnabled\" \
+	-DCVAR_ENABLE_MULTI_VIEWPORTS=\"gEnableMultiViewports\" \
+	-DCVAR_LOW_RES_MODE=\"gLowResMode\" \
+	-DCVAR_SIMULATED_INPUT_LAG=\"gSimulatedInputLag\" \
+	-DCVAR_GAME_OVERLAY_FONT=\"gOverlayFont\" \
+	-DCVAR_MENU_BAR_OPEN=\"gOpenMenuBar\" \
+	-DCVAR_PREFIX_CONTROLLERS=\"gControllers\" \
+	-DCVAR_PREFIX_ADVANCED_RESOLUTION=\"gAdvancedResolution\" \
+	-DCVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"
+
+CXXFLAGS = $(CFLAGS) -fexceptions -std=gnu++20 -fpermissive
+ASFLAGS  = $(CFLAGS)
+
+all: $(TARGET).vpk
+
+$(TARGET).vpk: $(TARGET).velf
+	vita-make-fself -c -s $< eboot.bin
+	vita-mksfoex -s TITLE_ID=$(TITLE) -d ATTRIBUTE2=12 "$(TARGET)" param.sfo
+	vita-pack-vpk -s param.sfo -b eboot.bin $(TARGET).vpk \
+		-a livearea/icon0.png=sce_sys/icon0.png \
+		-a livearea/pic0.png=sce_sys/pic0.png \
+		-a livearea/bg.png=sce_sys/livearea/contents/bg.png \
+		-a livearea/startup.png=sce_sys/livearea/contents/startup.png \
+		-a livearea/template.xml=sce_sys/livearea/contents/template.xml
+
+prepare: f $(OBJS_PREPARE)
+
+f:
+	mkdir f
+
+%.ok:
+	$(eval gen_num=$(shell echo $$(($(gen_num)+1))))
+	@cp $(@:k=) f/$(gen_num).o
+
+%.oc:
+	@rm -rf $(@:c=)
+
+%.velf: %.elf
+	cp $< $<.unstripped.elf
+	$(PREFIX)-strip -g $<
+	vita-elf-create $< $@
+
+$(TARGET).elf: $(FINAL_OBJS)
+	$(CXX) $(CXXFLAGS) $^ $(LIBS) -o $@
+
+objects: $(OBJS)
+
+clean: $(OBJS_CLEAN)
+	@rm -rf $(TARGET).velf $(TARGET).elf $(FINAL_OBJS) eboot.bin $(TARGET).vpk param.sfo
