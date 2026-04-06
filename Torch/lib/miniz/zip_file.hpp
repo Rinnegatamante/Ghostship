@@ -225,7 +225,7 @@
 // functions (such as tdefl_compress_mem_to_heap() and tinfl_decompress_mem_to_heap()) won't work.
 //#define MINIZ_NO_MALLOC
 
-#if defined(__TINYC__) && (defined(__linux) || defined(__linux__))
+#if defined(__TINYC__) && (defined(__linux) || defined(__linux__)) || defined(__vita__)
   // TODO: Work around "error: include file 'sys\utime.h' when compiling with tcc on Linux
   #define MINIZ_NO_TIME
 #endif
@@ -5702,6 +5702,7 @@ private:
         result.file_size = static_cast<std::size_t>(stat.m_uncomp_size);
         result.header_offset = static_cast<std::size_t>(stat.m_local_header_ofs);
         result.crc = stat.m_crc32;
+#ifndef MINIZ_NO_TIME
         auto time = detail::safe_localtime(stat.m_time);
         result.date_time.year = 1900 + time.tm_year;
         result.date_time.month = 1 + time.tm_mon;
@@ -5709,6 +5710,7 @@ private:
         result.date_time.hours = time.tm_hour;
         result.date_time.minutes = time.tm_min;
         result.date_time.seconds = time.tm_sec;
+#endif
         result.flag_bits = stat.m_bit_flag;
         result.internal_attr = stat.m_internal_attr;
         result.external_attr = stat.m_external_attr;

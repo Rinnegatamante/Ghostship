@@ -1,5 +1,6 @@
 #include "Vec3D.h"
 #include <iomanip>
+#include <cmath>
 
 static int GetPrecision(float f) {
     int p = 0;
