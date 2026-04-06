@@ -645,9 +645,9 @@ void GfxWindowBackendSDL2::HandleEvents() {
         sdlevent.key.keysym.sym = c; \
         SDL_PushEvent(&sdlevent); }
     if (IS_PRESSED(SCE_CTRL_SELECT)) {
-        fake_press(SDL_KEYDOWN, SDL_SCANCODE_F1, SDLK_F1);
+        fake_press(SDL_KEYDOWN, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE);
     } else if (IS_RELEASED(SCE_CTRL_SELECT)) {
-        fake_press(SDL_KEYUP, SDL_SCANCODE_F1, SDLK_F1);
+        fake_press(SDL_KEYUP, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE);
     }
     oldpad = pad.buttons;
 #endif
