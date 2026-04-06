@@ -30,7 +30,6 @@
 #ifdef __vita__
 #include <psp2/gxm.h>
 extern "C" {
-    SceGxmTexture *vglGetGxmTexture(GLenum target);
     void vglBufferData(GLenum target, const GLvoid *data);
 };
 #define SHADER_MAGIC (1)

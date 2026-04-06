@@ -334,6 +334,7 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
     vglSetParamBufferSize(6 * 1024 * 1024);
     vglInitWithCustomThreshold(0, 960, 544, 4 * 1024 * 1024, 0, 0, 0, SCE_GXM_MULTISAMPLE_4X);
     SDL_setenv("VITA_USE_GLSL_TRANSLATOR", "1", 1);
+    sceIoMkdir("ux0:data/ghostship/shader_cache", 0777);
 #endif
 
 #if SDL_VERSION_ATLEAST(2, 24, 0)

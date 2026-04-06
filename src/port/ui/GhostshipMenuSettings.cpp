@@ -66,7 +66,7 @@ void GhostshipMenu::AddMenuSettings() {
                      .Tooltip("Changes the Theme of the Menu Widgets.")
                      .ComboMap(menuThemeOptions)
                      .DefaultIndex(Colors::LightBlue));
-#if not defined(__SWITCH__) and not defined(__WIIU__)
+#if not defined(__SWITCH__) and not defined(__WIIU__) and not defined(__vita__)
     AddWidget(path, "Menu Controller Navigation", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_IMGUI_CONTROLLER_NAV)
         .RaceDisable(false)
@@ -213,7 +213,7 @@ void GhostshipMenu::AddMenuSettings() {
                 .IsPercentage()
                 .Min(0.5f)
                 .Max(2.0f));
-#ifndef __WIIU__
+#if !defined(__WIIU__) && !defined(__vita__)
     AddWidget(path, "Anti-aliasing (MSAA)", WIDGET_CVAR_SLIDER_INT)
         .CVar(CVAR_MSAA_VALUE)
         .RaceDisable(false)

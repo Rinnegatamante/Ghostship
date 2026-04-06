@@ -204,9 +204,10 @@ GameEngine::GameEngine() : dictionary(nullptr) {
         static_cast<spdlog::level::level_enum>(CVarGetInteger(CVAR_DEVELOPER_TOOLS("LogLevel"), defaultLogLevel));
     context->InitLogging(logLevel, logLevel);
     Ship::Context::GetInstance()->GetLogger()->set_pattern("[%H:%M:%S.%e] [%s:%#] [%l] %v");
+#ifndef __vita__
     SPDLOG_INFO("Starting Ghostship version {} (Branch: {} | Commit: {})", (char*)gBuildVersion, (char*)gGitBranch,
                 (char*)gGitCommitHash);
-
+#endif
     auto controlDeck = std::make_shared<LUS::ControlDeck>();
     this->context->InitControlDeck(controlDeck);
 
