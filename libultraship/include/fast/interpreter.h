@@ -175,6 +175,16 @@ struct TextureCacheKey {
     uint8_t palette_index;
     uint32_t size_bytes;
 
+#ifdef __vita__
+    bool operator==(const TextureCacheKey& rhs) const {
+        return !sceClibMemcmp(&rhs, this, sizeof(TextureCacheKey));
+    };
+    struct Hasher {
+        size_t operator()(const TextureCacheKey& key) const noexcept {
+            return (size_t)key.texture_addr;
+        }
+    };
+#else
     bool operator==(const TextureCacheKey&) const noexcept = default;
 
     struct Hasher {
@@ -183,6 +193,7 @@ struct TextureCacheKey {
             return (size_t)(addr ^ (addr >> 5));
         }
     };
+#endif
 };
 
 typedef std::unordered_map<TextureCacheKey, struct TextureCacheValue, TextureCacheKey::Hasher> TextureCacheMap;
