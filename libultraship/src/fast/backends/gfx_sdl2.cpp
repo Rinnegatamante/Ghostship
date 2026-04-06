@@ -44,6 +44,15 @@
 LONG_PTR SDL_WndProc;
 #endif
 
+#ifdef __vita__
+#include <vitasdk.h>
+extern "C" {
+GLboolean vglInitWithCustomThreshold(int pool_size, int width, int height, int ram_threshold, int cdram_threshold, int phycont_threshold, int cdlg_threshold, SceGxmMultisampleMode msaa);
+void vglSetParamBufferSize(uint32_t size);
+void vglUseTripleBuffering(GLboolean usage);
+};
+#endif
+
 namespace Fast {
 const SDL_Scancode lus_to_sdl_table[] = {
     SDL_SCANCODE_UNKNOWN,
@@ -248,10 +257,17 @@ void GfxWindowBackendSDL2::SetFullscreenImpl(bool on, bool call_callback) {
 
     if (!on) {
         auto conf = Ship::Context::GetInstance()->GetConfig();
+#ifdef __vita__
+        mWindowWidth = conf->GetInt("Window.Width", 960);
+        mWindowHeight = conf->GetInt("Window.Height", 545);
+        int32_t posX = conf->GetInt("Window.PositionX", 0);
+        int32_t posY = conf->GetInt("Window.PositionY", 0);
+#else
         mWindowWidth = conf->GetInt("Window.Width", 640);
         mWindowHeight = conf->GetInt("Window.Height", 480);
         int32_t posX = conf->GetInt("Window.PositionX", 100);
         int32_t posY = conf->GetInt("Window.PositionY", 100);
+#endif
         if (display_in_use < 0) { // Fallback to default if out of bounds
             posX = 100;
             posY = 100;
@@ -313,6 +329,12 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
                                 uint32_t height, int32_t posX, int32_t posY) {
     mWindowWidth = width;
     mWindowHeight = height;
+
+#ifdef __vita__
+    vglSetParamBufferSize(6 * 1024 * 1024);
+    vglInitWithCustomThreshold(0, 960, 544, 4 * 1024 * 1024, 0, 0, 0, SCE_GXM_MULTISAMPLE_4X);
+    SDL_setenv("VITA_USE_GLSL_TRANSLATOR", "1", 1);
+#endif
 
 #if SDL_VERSION_ATLEAST(2, 24, 0)
     /* fix DPI scaling issues on Windows */
@@ -388,12 +410,13 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
     }
 
     if (use_opengl) {
+#ifndef __vita__
         SDL_GL_GetDrawableSize(mWnd, &mWindowWidth, &mWindowHeight);
 
         if (startFullScreen) {
             SetFullscreenImpl(true, false);
         }
-
+#endif
         mCtx = SDL_GL_CreateContext(mWnd);
 
         SDL_GL_MakeCurrent(mWnd, mCtx);
@@ -611,6 +634,25 @@ void GfxWindowBackendSDL2::HandleSingleEvent(SDL_Event& event) {
 }
 
 void GfxWindowBackendSDL2::HandleEvents() {
+#ifdef __vita__
+    static uint32_t oldpad;
+    SceCtrlData pad;
+    sceCtrlPeekBufferPositive(0, &pad, 1);
+    #define IS_PRESSED(x) ((pad.buttons & x) && !(oldpad & x))
+    #define IS_RELEASED(x) ((oldpad & x) && !(pad.buttons & x))
+    #define fake_press(a, b, c) \
+        { SDL_Event sdlevent = {0}; \
+        sdlevent.type = a; \
+        sdlevent.key.keysym.scancode = b; \
+        sdlevent.key.keysym.sym = c; \
+        SDL_PushEvent(&sdlevent); }
+    if (IS_PRESSED(SCE_CTRL_SELECT)) {
+        fake_press(SDL_KEYDOWN, SDL_SCANCODE_F1, SDLK_F1);
+    } else if (IS_RELEASED(SCE_CTRL_SELECT)) {
+        fake_press(SDL_KEYUP, SDL_SCANCODE_F1, SDLK_F1);
+    }
+    oldpad = pad.buttons;
+#endif
     SDL_Event event;
     SDL_PumpEvents();
     while (SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_FIRSTEVENT, SDL_CONTROLLERDEVICEADDED - 1) > 0) {
@@ -642,6 +684,24 @@ static uint64_t qpc_to_100ns(uint64_t qpc) {
 }
 
 void GfxWindowBackendSDL2::SyncFramerateWithTime() const {
+#ifdef __vita__
+    uint64_t t = sceKernelGetProcessTimeLow();
+    
+    const int64_t next = previous_time + FRAME_INTERVAL_US_NUMERATOR / FRAME_INTERVAL_US_DENOMINATOR;
+    const int64_t left = next - t;
+    if (left > 0) {
+        sceKernelDelayThread(left);
+    }
+    
+    t = sceKernelGetProcessTimeLow();
+    if (left > 0 && t - next < 1000) {
+        // In case it takes some time for the application to wake up after sleep,
+        // or inaccurate timer,
+        // don't let that slow down the framerate.
+        t = next;
+    }
+    previous_time = t;
+#else
     uint64_t t = qpc_to_100ns(SDL_GetPerformanceCounter());
 
     const int64_t next = previous_time + 10 * FRAME_INTERVAL_US_NUMERATOR / FRAME_INTERVAL_US_DENOMINATOR;
@@ -680,6 +740,7 @@ void GfxWindowBackendSDL2::SyncFramerateWithTime() const {
         // don't let that slow down the framerate.
         t = next;
     }
+#endif
     previous_time = t;
 }
 
