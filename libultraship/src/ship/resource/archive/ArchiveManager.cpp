@@ -26,6 +26,11 @@ void ArchiveManager::Init(const std::vector<std::string>& archivePaths,
     mValidGameVersions = validGameVersions;
     auto archives = GetArchiveListInPaths(archivePaths);
     for (const auto& archive : archives) {
+#ifdef __vita__
+        if (archive.starts_with("app0"))
+            AddArchive(&archive.c_str()[6]);
+        else
+#endif
         AddArchive(archive);
     }
 }
