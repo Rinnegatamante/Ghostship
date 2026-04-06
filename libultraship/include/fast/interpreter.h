@@ -29,6 +29,10 @@
 #include <compare>
 #endif
 
+#ifdef __vita__
+#include <vitasdk.h>
+#endif
+
 /*enum {
     CC_0,
     CC_TEXEL0,

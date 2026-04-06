@@ -26,10 +26,6 @@ LUS_SOURCES := libultraship/src/fast libultraship/src/fast/resource/type libultr
 	libultraship/src/libultraship/log libultraship/src/libultraship/libultra libultraship/src/libultraship/controller/controldeck libultraship/src/libultraship/bridge \
 	libultraship/src/libultraship/controller/controldevice/controller libultraship/src/libultraship/controller/controldevice/controller/mapping libultraship/imgui
 
-PRISM_INCLUDES := prism/src
-
-PRISM_SOURCES := prism/src prism/src/prism prism/src/prism/utils
-
 GAME_SOURCES := src/audio src/buffers src/engine src/game src/goddard src/menu src/pc sound actors bin data levels src/port src/port/Enhacnements \
 	src/port/Enhancements/game-interactor src/port/importer text textures levels/bbh levels/bitdw levels/bitfs levels/bits \
 	levels/bob levels/bowser_1 levels/bowser_2 levels/bowser_3 levels/castle_courtyard levels/castle_grounds levels/castle_inside \
@@ -38,9 +34,9 @@ GAME_SOURCES := src/audio src/buffers src/engine src/game src/goddard src/menu s
 	src/goddard/dynlists src/port/interpolation src/port/hooks/impl src/port/console src/port/mods src/port/importer/types \
 	src/port/mods/utils src/port/ui src/port/game
 
-SOURCES := $(LUS_SOURCES) $(TORCH_SOURCES) $(GAME_SOURCES) $(PRISM_SOURCES)
+SOURCES := $(LUS_SOURCES) $(TORCH_SOURCES) $(GAME_SOURCES)
 
-INCLUDES := $(LUS_INCLUDES) $(TORCH_INCLUDES) $(PRISM_INCLUDES) \
+INCLUDES := $(LUS_INCLUDES) $(TORCH_INCLUDES) \
 	actors levels include include/PR spdlog/include include/assets include/assets/actors \
 	include/assets/assets include/assets/bin include/assets/levels include/assets/textures \
 	src/audio src/buffers src/engine src/game src/goddard src/menu src/pc src/port src/port/Enhancements \
