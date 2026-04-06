@@ -683,6 +683,10 @@ static uint64_t qpc_to_100ns(uint64_t qpc) {
 
 void GfxWindowBackendSDL2::SyncFramerateWithTime() const {
 #ifdef __vita__
+	// If we target 60+ FPS, we use V-Sync for framelimiting
+	if (FRAME_INTERVAL_US_DENOMINATOR >= 60)
+		return;
+
     uint64_t t = sceKernelGetProcessTimeLow();
     
     const int64_t next = previous_time + FRAME_INTERVAL_US_NUMERATOR / FRAME_INTERVAL_US_DENOMINATOR;
