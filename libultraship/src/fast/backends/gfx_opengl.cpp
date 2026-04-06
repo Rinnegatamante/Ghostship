@@ -27,6 +27,15 @@
 #include "fast/interpreter.h"
 #include "ship/config/ConsoleVariable.h"
 
+#ifdef __vita__
+#include <psp2/gxm.h>
+extern "C" {
+    SceGxmTexture *vglGetGxmTexture(GLenum target);
+    void vglBufferData(GLenum target, const GLvoid *data);
+};
+#define SHADER_MAGIC (1)
+#endif
+
 namespace Fast {
 int GfxRenderingAPIOGL::GetMaxTextureSize() {
     GLint max_texture_size;
@@ -282,6 +291,13 @@ std::string GfxRenderingAPIOGL::BuildFsShader(const CCFeatures& cc_features) {
         { "core_opengl", false },
         { "texture", "texture" },
         { "vOutColor", "vOutColor" },
+#elif defined(__vita__)
+        { "GLSL_VERSION", "" },
+        { "attr", "varying" },
+        { "opengles", true },
+        { "core_opengl", false },
+        { "texture", "texture2D" },
+        { "vOutColor", "gl_FragColor" },
 #else
         { "GLSL_VERSION", "#version 130" },
         { "attr", "varying" },
@@ -340,6 +356,11 @@ static std::string BuildVsShader(const CCFeatures& cc_features) {
                                      { "GLSL_VERSION", "#version 300 es" },
                                      { "attr", "in" },
                                      { "out", "out" },
+                                     { "opengles", true }
+#elif defined(__vita__)
+                                     { "GLSL_VERSION", "" },
+                                     { "attr", "attribute" },
+                                     { "out", "varying" },
                                      { "opengles", true }
 #else
                                      { "GLSL_VERSION", "#version 110" },
@@ -647,7 +668,11 @@ void GfxRenderingAPIOGL::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, size
     SetPerDrawUniforms();
 
     // printf("flushing %d tris\n", buf_vbo_num_tris);
+#ifdef __vita__
+    vglBufferData(GL_ARRAY_BUFFER, buf_vbo);
+#else
     glBufferData(GL_ARRAY_BUFFER, sizeof(float) * buf_vbo_len, buf_vbo, GL_STREAM_DRAW);
+#endif
     glDrawArrays(GL_TRIANGLES, 0, 3 * buf_vbo_num_tris);
 }
 
@@ -659,12 +684,12 @@ void GfxRenderingAPIOGL::Init() {
     glGenBuffers(1, &mOpenglVbo);
     glBindBuffer(GL_ARRAY_BUFFER, mOpenglVbo);
 
-#if defined(__APPLE__) || defined(USE_OPENGLES)
+#if defined(__APPLE__) || defined(USE_OPENGLES) && !defined(__vita__)
     glGenVertexArrays(1, &mOpenglVao);
     glBindVertexArray(mOpenglVao);
 #endif
 
-#ifndef USE_OPENGLES // not supported on gles
+#if !defined(USE_OPENGLES) && !defined(__vita__) // not supported on gles
     glEnable(GL_DEPTH_CLAMP);
 #endif
     glDepthFunc(GL_LEQUAL);
@@ -695,7 +720,9 @@ void GfxRenderingAPIOGL::StartFrame() {
 }
 
 void GfxRenderingAPIOGL::EndFrame() {
+#ifndef __vita__
     glFlush();
+#endif
 }
 
 void GfxRenderingAPIOGL::FinishRender() {
@@ -860,7 +887,7 @@ void GfxRenderingAPIOGL::CopyFramebuffer(int fb_dst_id, int fb_src_id, int srcX0
 
     // Disabled for blit
     glDisable(GL_SCISSOR_TEST);
-
+#ifndef __vita__
     // For msaa enabled buffers we can't perform a scaled blit to a simple sample buffer
     // First do an unscaled blit to a msaa resolved buffer
     if (src.height != dst.height && src.width != dst.width && src.msaa_level > 1) {
@@ -883,7 +910,7 @@ void GfxRenderingAPIOGL::CopyFramebuffer(int fb_dst_id, int fb_src_id, int srcX0
         fb_src_id = fb_resolve_id;
         src = fb_resolve;
     }
-
+#endif
     glBindFramebuffer(GL_READ_FRAMEBUFFER, src.fbo);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dst.fbo);
 
@@ -928,7 +955,7 @@ GfxRenderingAPIOGL::GetPixelDepth(int fb_id, const std::set<std::pair<float, flo
         glBindFramebuffer(GL_FRAMEBUFFER, fb.fbo);
         int x = coordinates.begin()->first;
         int y = coordinates.begin()->second;
-#ifndef USE_OPENGLES // not supported on gles. Runs fine without it, but this may cause issues
+#if !defined(USE_OPENGLES) && !defined(__vita__) // not supported on gles. Runs fine without it, but this may cause issues
         glReadPixels(x, fb.invertY ? fb.height - y : y, 1, 1, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8,
                      &depth_stencil_value);
 #endif
@@ -968,7 +995,7 @@ GfxRenderingAPIOGL::GetPixelDepth(int fb_id, const std::set<std::pair<float, flo
 
         glBindFramebuffer(GL_READ_FRAMEBUFFER, mPixelDepthFb);
         std::vector<uint32_t> depth_stencil_values(coordinates.size());
-#ifndef USE_OPENGLES // not supported on gles. Runs fine without it, but this may cause issues
+#if !defined(USE_OPENGLES) && !defined(__vita__) // not supported on gles. Runs fine without it, but this may cause issues
         glReadPixels(0, 0, coordinates.size(), 1, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, depth_stencil_values.data());
 #endif
         {
@@ -985,7 +1012,12 @@ GfxRenderingAPIOGL::GetPixelDepth(int fb_id, const std::set<std::pair<float, flo
 }
 
 void GfxRenderingAPIOGL::SetTextureFilter(FilteringMode mode) {
+#ifndef __vita__
     gfx_texture_cache_clear();
+#else
+    if (mode == FILTER_THREE_POINT)
+        mode = FILTER_LINEAR;
+#endif
     mCurrentFilterMode = mode;
 }
 

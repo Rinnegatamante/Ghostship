@@ -493,6 +493,9 @@ class Interpreter {
     unsigned int mMsaaLevel = 1;
     bool mDroppedFrame{};
     float* mBufVbo; // 3 vertices in a triangle and 32 floats per vtx
+#ifdef __vita__
+    float* mBufVboPtr;
+#endif
     size_t mBufVboLen{};
     size_t mBufVboNumTris{};
     GfxWindowBackend* mWapi = nullptr;

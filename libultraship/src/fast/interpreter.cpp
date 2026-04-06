@@ -62,7 +62,32 @@ std::stack<std::string> currentDir;
 #define RATIO_Y(activeFb, dims) \
     ((mFbActive ? activeFb->second.applied_height : dims.height) / (2.0f * HALF_SCREEN_HEIGHT(activeFb)))
 
+#ifdef __vita__
+#define TEXTURE_CACHE_MAX_SIZE 1024
+#else
 #define TEXTURE_CACHE_MAX_SIZE 500
+#endif
+
+#ifdef __vita__
+#include <vitasdk.h>
+typedef enum {
+    VGL_MODE_SHADER_PAIR,
+    VGL_MODE_GLOBAL,
+    VGL_MODE_POSTPONED
+} vglSemanticMode;
+typedef enum {
+    VGL_MEM_VRAM, // CDRAM
+    VGL_MEM_RAM, // USER_RW RAM
+    VGL_MEM_SLOW, // PHYCONT_USER_RW RAM
+    VGL_MEM_BUDGET, // CDLG RAM
+    VGL_MEM_EXTERNAL, // newlib mem
+    VGL_MEM_ALL
+} vglMemType;
+extern "C" {
+void *vglAlloc(uint32_t size, vglMemType type);
+void vglFree(void*);
+};
+#endif
 
 namespace Fast {
 
@@ -109,13 +134,21 @@ constexpr size_t MAX_TRI_BUFFER = 256;
 Interpreter::Interpreter() {
     mRsp = new RSP();
     mRdp = new RDP();
+#ifdef __vita__
+    mBufVbo = mBufVboPtr = (float *)vglAlloc(32 * 1024 * 1024, VGL_MEM_RAM);
+#else
     mBufVbo = new float[MAX_TRI_BUFFER * (32 * 3)];
+#endif
 }
 
 Interpreter::~Interpreter() {
     delete mRsp;
     delete mRdp;
+#ifdef __vita__
+	vglFree(mBufVboPtr);
+#else
     delete[] mBufVbo;
+#endif
 }
 
 static std::weak_ptr<Interpreter> mInstance;
@@ -127,6 +160,12 @@ void GfxSetInstance(std::shared_ptr<Interpreter> gfx) {
 void Interpreter::Flush() {
     if (mBufVboLen > 0) {
         mRapi->DrawTriangles(mBufVbo, mBufVboLen, mBufVboNumTris);
+#ifdef __vita__
+        mBufVbo += mBufVboLen;
+		if (((uintptr_t)mBufVbo - (uintptr_t)mBufVboPtr) > (32 * 1024 * 1024 - (MAX_TRI_BUFFER * (32 * 3)) * sizeof(float))) {
+			mBufVbo = mBufVboPtr;
+		}
+#endif
         mBufVboLen = 0;
         mBufVboNumTris = 0;
     }
