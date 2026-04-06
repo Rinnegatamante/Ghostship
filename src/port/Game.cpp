@@ -3,6 +3,11 @@
 #include <fast/interpreter.h>
 #include "Engine.h"
 
+#ifdef __vita__
+#include <vitasdk.h>
+int _newlib_heap_size_user = 256 * 1024 * 1024;
+#endif
+
 extern "C" {
 #include "audio/external.h"
 #include "game/game_init.h"
@@ -26,10 +31,33 @@ void push_frame() {
     GameEngine::EndAudioFrame();
 }
 
+#ifdef __vita__
+extern "C" void *vita_main(void *argv);
+#endif
+
 #ifdef _WIN32
 int SDL_main(int argc, char** argv) {
 #else
 int main() {
+#endif
+#ifdef __vita__
+	sceSysmoduleLoadModule(SCE_SYSMODULE_RAZOR_CAPTURE);
+    scePowerSetArmClockFrequency(444);
+    scePowerSetBusClockFrequency(222);
+    scePowerSetGpuClockFrequency(222);
+    scePowerSetGpuXbarClockFrequency(166);
+    sceIoMkdir("ux0:data/ghostship/shader_cache", 0777);
+    
+    sceClibPrintf("Starting main thread...\n");
+    pthread_t t;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, 2 * 1024 * 1024);
+    pthread_create(&t, &attr, vita_main, NULL);
+    return sceKernelExitDeleteThread(0);
+}
+
+extern "C" void *vita_main(void *argv) {
 #endif
     GameEngine::Create();
     alloc_pool();
