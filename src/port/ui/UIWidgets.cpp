@@ -351,6 +351,7 @@ bool Checkbox(const char* _label, bool* value, const CheckboxOptions& options) {
                                                             : ImGuiCol_FrameBg),
                        true, style.FrameRounding);
     ImU32 check_col = ImGui::GetColorU32(ImGuiCol_CheckMark);
+#ifndef __vita__
     bool mixed_value = (g.LastItemData.ItemFlags & ImGuiItemFlags_MixedValue) != 0;
     if (mixed_value) {
         // Undocumented tristate/mixed/indeterminate checkbox (#2644)
@@ -358,7 +359,9 @@ bool Checkbox(const char* _label, bool* value, const CheckboxOptions& options) {
         // supported by all widgets (not just checkbox)
         ImVec2 pad(ImMax(1.0f, IM_TRUNC(square_sz / 3.6f)), ImMax(1.0f, IM_TRUNC(square_sz / 3.6f)));
         window->DrawList->AddRectFilled(check_bb.Min + pad, check_bb.Max - pad, check_col, style.FrameRounding);
-    } else if (*value) {
+    } else
+#endif
+    if (*value) {
         const float pad = ImMax(1.0f, IM_TRUNC(square_sz / 6.0f));
         ImGui::RenderCheckMark(window->DrawList, check_bb.Min + ImVec2(pad, pad), check_col, square_sz - pad * 2.0f);
     }
@@ -403,17 +406,18 @@ bool StateButton(const char* str_id, const char* label, ImVec2 size, ButtonOptio
     ImGui::ItemSize(size, (size.y >= default_size) ? g.Style.FramePadding.y : -1.0f);
     if (!ImGui::ItemAdd(bb, id))
         return false;
-
+#ifndef __vita__
     if (g.LastItemData.ItemFlags & ImGuiItemFlags_ButtonRepeat) {
         ImGui::PushItemFlag(ImGuiItemFlags_ButtonRepeat, true);
     }
-
+#endif
     bool hovered, held;
     bool pressed = ImGui::ButtonBehavior(bb, id, &hovered, &held, flags);
-
+#ifndef __vita__
     if (g.LastItemData.ItemFlags & ImGuiItemFlags_ButtonRepeat) {
         ImGui::PopItemFlag(); // ImGuiItemFlags_ButtonRepeat;
     }
+#endif
     PushStyleButton(options.color);
     // Render
     const ImU32 bg_col = ImGui::GetColorU32((held && hovered) ? ImGuiCol_ButtonActive
@@ -999,7 +1003,9 @@ bool RadioButton(const char* label, bool active, const RadioButtonsOptions& opti
     if (pressed)
         ImGui::MarkItemEdited(id);
 
+#ifndef __vita__
     ImGui::RenderNavCursor(total_bb, id);
+#endif
     const int num_segment = window->DrawList->_CalcCircleAutoSegmentCount(radius);
     window->DrawList->AddCircleFilled(center, radius,
                                       ImGui::GetColorU32((held && hovered) ? ImGuiCol_FrameBgActive

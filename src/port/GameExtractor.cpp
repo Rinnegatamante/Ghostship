@@ -22,7 +22,7 @@
 #include <unistd.h>
 #endif
 
-#if !defined(__IOS__) && !defined(__ANDROID__) && !defined(__SWITCH__)
+#if !defined(__IOS__) && !defined(__ANDROID__) && !defined(__SWITCH__) && !defined(__vita__)
 #include "portable-file-dialogs.h"
 #endif
 
@@ -73,7 +73,7 @@ bool GameExtractor::SelectGameFromUI() {
         }
     }
 
-#if !defined(__IOS__) && !defined(__ANDROID__) && !defined(__SWITCH__)
+#if !defined(__IOS__) && !defined(__ANDROID__) && !defined(__SWITCH__) && !defined(__vita__)
     // Desktop: fallback to file dialogue if no baserom found
     if (!foundGame) {
         if (!pfd::settings::available()) {
@@ -190,9 +190,15 @@ std::optional<std::string> GameExtractor::ValidateChecksum() const {
 void GameExtractor::WritePortVersion() {
     auto writer = LUS::BinaryWriter();
     writer.SetEndianness(Torch::Endianness::Big);
+#ifdef __vita__
+    writer.Write((uint16_t)1);
+    writer.Write((uint16_t)0);
+    writer.Write((uint16_t)2);
+#else
     writer.Write((uint16_t)gBuildVersionMajor);
     writer.Write((uint16_t)gBuildVersionMinor);
     writer.Write((uint16_t)gBuildVersionPatch);
+#endif
     writer.Close();
 
     Companion::Instance->RegisterCompanionFile("portVersion", writer.ToVector());

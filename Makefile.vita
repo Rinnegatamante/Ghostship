@@ -2,41 +2,51 @@ TARGET := Ghostship
 
 TITLE := GHSTSHP01
 
-SOURCE_FOLDERS := 
-
 TORCH_INCLUDES := Torch/src Torch/src/utils Torch/lib Torch Torch/src/factories \
-	Torch/lib/n64graphics
+	Torch/lib/n64graphics Torch/lib/binarytools
 
-TORCH_SOURCES := Torch/src Torch/src/factories Torch/src/factories/sm64 \
+TORCH_SOURCES := Torch/src Torch/src/factories Torch/src/factories/sm64 Torch/lib/binarytools \
 	Torch/src/n64 Torch/src/preprocess Torch/src/types Torch/src/utils Torch/lib/libmio0 \
 	Torch/src/archive Torch/lib/binarytools Torch/lib/libyay0 Torch/lib/n64graphics \
 	Torch/src/factories/naudio/v0 Torch/src/factories/naudio/v1
 
-LUS_INCLUDES := libultraship/include libultraship/src libultraship/src/utils/binarytools libultraship/src/resource/type \
+LUS_INCLUDES := libultraship/include libultraship/src libultraship/src/ship/utils/binarytools libultraship/src/resource/type \
 	libultraship/src/resource libultraship/src/window libultraship/src/window/gui libultraship/src/audio libultraship/src/graphic \
 	libultraship/src libultraship/imgui libultraship/imgui/backends libultraship/src/public/bridge libultraship/include/libultraship \
-	libultraship/src/resource/factory
+	libultraship/src/resource/factory libultraship/imgui/backends libultraship/imgui
 
-LUS_SOURCES := libultraship/src libultraship/src/audio libultraship/src/config libultraship/src/graphic/Fast3D/debug \
-	libultraship/src/debug libultraship/src/menu libultraship/src/utils libultraship/src/utils/binarytools \
-	libultraship/src/resource libultraship/src/resource/type libultraship/src/resource/factory \
-	libultraship/src/window libultraship/src/window/gui libultraship/src/config libultraship/src/public \
-	libultraship/src/public/libultra libultraship/src/public/bridge libultraship/src/graphic/Fast3D \
-	libultraship/src/log libultraship/imgui libultraship/src/controller/controldevice libultraship/src/window/gui/resource \
-	libultraship/src/controller/controldevice/controller libultraship/src/controller/controldevice/controller/mapping \
-	libultraship/src/controller/controldevice/controller/mapping/sdl libultraship/src/controller/controldevice/controller/mapping/factories \
-	libultraship/src/controller/controldevice/controller/mapping/keyboard libultraship/src/controller/controldevice/controller/mapping/mouse \
-	libultraship/src/controller/deviceindex libultraship/src/controller/controldeck libultraship/src/resource/archive
+LUS_SOURCES := libultraship/src/fast libultraship/src/fast/resource/type libultraship/src/fast/resource/factory libultraship/src/ship/resource/factory \
+	libultraship/src/fast/debug libultraship/src/fast/backends libultraship/src/ship libultraship/src/ship/audio libultraship/src/ship/resource/type \
+	libultraship/src/ship/config libultraship/src/ship/controller/controldeck libultraship/src/ship/controller/controldevice libultraship/src/ship/utils \
+	libultraship/src/ship/controller/controldevice/controller libultraship/src/ship/controller/controldevice/controller/mapping libultraship/src/ship/window \
+	libultraship/src/ship/controller/controldevice/controller/mapping/factories libultraship/src/ship/controller/controldevice/controller/mapping/keyboard \
+	libultraship/src/ship/controller/controldevice/controller/mapping/mouse libultraship/src/ship/controller/controldevice/controller/mapping/sdl \
+	libultraship/src/ship/controller/physicaldevice libultraship/src/ship/debug libultraship/src/ship/resource libultraship/src/ship/resource/archive \
+	libultraship/src/ship/utils/binarytools libultraship/src/ship/window/gui libultraship/src/ship/window/gui/resource libultraship/src/libultraship/window/gui \
+	libultraship/src/libultraship/log libultraship/src/libultraship/libultra libultraship/src/libultraship/controller/controldeck libultraship/src/libultraship/bridge \
+	libultraship/src/libultraship/controller/controldevice/controller libultraship/src/libultraship/controller/controldevice/controller/mapping libultraship/imgui
 
-SOURCES := $(LUS_SOURCES) $(TORCH_SOURCES) \
-	src/audio src/buffers src/engine src/game src/goddard src/menu \
-	src/port src/port/data src/port/hooks src/port/interpolation src/port/Rando \
-	src/port/util src/port/console src/port/game src/port/importer src/port/mods src/port/ui
+PRISM_INCLUDES := prism/src
 
-INCLUDES := $(LUS_INCLUDES) $(TORCH_INCLUDES) \
-	include port src . spdlog/include
+PRISM_SOURCES := prism/src prism/src/prism prism/src/prism/utils
 
-LIBS = -lstorm -lgfxd -lbzip2 -lzip -lzstd -lz -lyaml-cpp -llzma -lssl -lcrypto -lstdc++ -lpng \
+GAME_SOURCES := src/audio src/buffers src/engine src/game src/goddard src/menu src/pc sound actors bin data levels src/port src/port/Enhacnements \
+	src/port/Enhancements/game-interactor src/port/importer text textures levels/bbh levels/bitdw levels/bitfs levels/bits \
+	levels/bob levels/bowser_1 levels/bowser_2 levels/bowser_3 levels/castle_courtyard levels/castle_grounds levels/castle_inside \
+	levels/ccm levels/cotmc levels/ddd levels/ending levels/hmc levels/intro levels/jrb levels/lll levels/menu levels/pss \
+	levels/rr levels/sa levels/sl levels/ssl levels/thi levels/totwc levels/ttc levels/ttm levels/vcutm levels/wdw levels/wf levels/wmotr \
+	src/goddard/dynlists src/port/interpolation src/port/hooks/impl src/port/console src/port/mods src/port/importer/types \
+	src/port/mods/utils src/port/ui src/port/game
+
+SOURCES := $(LUS_SOURCES) $(TORCH_SOURCES) $(GAME_SOURCES) $(PRISM_SOURCES)
+
+INCLUDES := $(LUS_INCLUDES) $(TORCH_INCLUDES) $(PRISM_INCLUDES) \
+	actors levels include include/PR spdlog/include include/assets include/assets/actors \
+	include/assets/assets include/assets/bin include/assets/levels include/assets/textures \
+	src/audio src/buffers src/engine src/game src/goddard src/menu src/pc src/port src/port/Enhancements \
+	src/port/enhancements/game-interactor textures src .
+
+LIBS = -lstorm -lgfxd -lzip -lbzip2 -lzstd -lz -lyaml-cpp -llzma -lssl -lcrypto -lstdc++ -lpng \
 	-Wl,--whole-archive -lpthread -Wl,--no-whole-archive \
 	-ltinyxml2 -lSDL2 -lvorbisfile -lvorbis -logg -lvitaGL -lvitashark -lSceShaccCgExt -ltaihen_stub -lmathneon -lSceAudioIn_stub \
 	-lSceIme_stub -lSceKernelDmacMgr_stub -lSceGxm_stub -lSceDisplay_stub -lSceTouch_stub -lSceHid_stub -lSceCtrl_stub -lSceNet_stub \
@@ -45,8 +55,15 @@ LIBS = -lstorm -lgfxd -lbzip2 -lzip -lzstd -lz -lyaml-cpp -llzma -lssl -lcrypto 
 
 FINAL_SOURCES := f
 
-CFILES := $(foreach dir,$(SOURCES), $(wildcard $(dir)/*.c))
+CFILES := $(foreach dir,$(SOURCES), $(wildcard $(dir)/*.c)) \
+	lib/src/alBnkfNew.c lib/src/guLookAtRef.c lib/src/guMtxF2L.c lib/src/guNormalize.c lib/src/guOrthoF.c \
+	lib/src/guPerspectiveF.c lib/src/guRotateF.c lib/src/guScaleF.c lib/src/guLookAtF.c lib/src/guTranslateF.c libultraship/imgui/backends/imgui_impl_opengl3.c \
+	libultraship/imgui/backends/imgui_impl_sdl2.c
 CPPFILES := $(foreach dir,$(SOURCES), $(wildcard $(dir)/*.cpp))
+
+CFILES := $(filter-out %.inc.c, $(CFILES))
+CFILES := $(filter-out bin/eu/%, $(CFILES))
+CFILES := $(filter-out src/game/main.c src/pc/dlmalloc.c, $(CFILES))
 
 OBJS := $(CFILES:.c=.o) $(CPPFILES:.cpp=.o) \
 	libultraship/imgui/backends/imgui_impl_opengl3.o \
@@ -62,8 +79,6 @@ OBJS_CLEAN := $(CFILES:.c=.oc) $(CPPFILES:.cpp=.oc) \
 
 FINAL_OBJS := $(foreach dir,$(FINAL_SOURCES), $(wildcard $(dir)/*.o))
 
-GFX_UCODE := F3DEX_GBI_2
-
 CVAR_PREFIX_RANDOMIZER_ENHANCEMENT := gRandoEnhancements
 CVAR_PREFIX_RANDOMIZER_SETTING     := gRandoSettings
 CVAR_PREFIX_COSMETIC               := gCosmetics
@@ -76,18 +91,20 @@ CVAR_PREFIX_TRACKER                := gTrackers
 CVAR_PREFIX_DEVELOPER_TOOLS        := gDeveloperTools
 CVAR_PREFIX_GENERAL                := gGeneral
 CVAR_PREFIX_REMOTE                 := gRemote
+CVAR_PREFIX_GAMEPLAY_STATS         := gGameplayStats
+CVAR_PREFIX_TIME_DISPLAY           := gTimeDisplay
 
 PREFIX = arm-vita-eabi
 CC  = $(PREFIX)-gcc
 CXX = $(PREFIX)-g++
 
-CFLAGS = -fno-lto -g -Wl,-q -O3 -ffast-math -fno-short-enums -fsigned-char \
+CFLAGS = -fno-lto -g -Wl,-q,--allow-multiple-definition -O3 -ffast-math -fno-short-enums -fsigned-char \
 	$(foreach dir,$(INCLUDES),-I$(dir)) \
 	-Wno-narrowing -DIMGUI_IMPL_OPENGL_ES2 -DSPDLOG_ACTIVE_LEVEL=6 \
-	-I$(VITASDK)/$(PREFIX)/include/SDL2 -DENABLE_OPENGL -D$(GFX_UCODE) \
-	-D_LANGUAGE_C -D_USE_MATH_DEFINES -DCIMGUI_DEFINE_ENUMS_AND_STRUCTS \
-	-DNON_MATCHING=1 -DNON_EQUIVALENT=1 -DAVOID_UB=1 \
-	-DVERSION_US=1 -DENABLE_RUMBLE=1 -DIMGUI_DEFINE_MATH_OPERATORS \
+	-I$(VITASDK)/$(PREFIX)/include/SDL2 -DENABLE_OPENGL=1 \
+	-D_LANGUAGE_C -D_USE_MATH_DEFINES -DCIMGUI_DEFINE_ENUMS_AND_STRUCTS -DNAUDIO_SUPPORT \
+	-DNON_EQUIVALENT=1 -DAVOID_UB=1 -DF3D_OLD=1 -DF3D_GBI=1 -DGBI_FLOATS=1 \
+	-DVERSION_US=1 -DENABLE_RUMBLE=1 -DIMGUI_DEFINE_MATH_OPERATORS -DSM64_SUPPORT \
 	-DCVAR_PREFIX_RANDOMIZER_ENHANCEMENT=\"$(CVAR_PREFIX_RANDOMIZER_ENHANCEMENT)\" \
 	-DCVAR_PREFIX_RANDOMIZER_SETTING=\"$(CVAR_PREFIX_RANDOMIZER_SETTING)\" \
 	-DCVAR_PREFIX_COSMETIC=\"$(CVAR_PREFIX_COSMETIC)\" \
@@ -100,6 +117,8 @@ CFLAGS = -fno-lto -g -Wl,-q -O3 -ffast-math -fno-short-enums -fsigned-char \
 	-DCVAR_PREFIX_DEVELOPER_TOOLS=\"$(CVAR_PREFIX_DEVELOPER_TOOLS)\" \
 	-DCVAR_PREFIX_GENERAL=\"$(CVAR_PREFIX_GENERAL)\" \
 	-DCVAR_PREFIX_REMOTE=\"$(CVAR_PREFIX_REMOTE)\" \
+	-DCVAR_PREFIX_GAMEPLAY_STATS=\"$(CVAR_PREFIX_GAMEPLAY_STATS)\" \
+	-DCVAR_PREFIX_TIME_DISPLAY=\"$(CVAR_PREFIX_TIME_DISPLAY)\" \
 	-DCVAR_VSYNC_ENABLED=\"gVsyncEnabled\" \
 	-DCVAR_Z_FIGHTING_MODE=\"gZFightingMode\" \
 	-DCVAR_NEW_FILE_DROPPED=\"gNewFileDropped\" \

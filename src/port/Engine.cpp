@@ -111,7 +111,11 @@ OTRVersion DetectOTRVersion(std::string fileName) {
 }
 
 bool VerifyArchiveVersion(OTRVersion version) {
+#ifndef __vita__
     return version.major == gBuildVersionMajor && version.minor == gBuildVersionMinor;
+#else
+	return true;
+#endif
 }
 
 GameEngine::GameEngine() : dictionary(nullptr) {
@@ -131,7 +135,11 @@ GameEngine::GameEngine() : dictionary(nullptr) {
     const std::string assets_path = Ship::Context::LocateFileAcrossAppDirs("ghostship.o2r");
 
     OTRVersion curVer = DetectOTRVersion("sm64.o2r");
+#ifdef __vita__
+	bool shouldRegen = false;
+#else
     bool shouldRegen = !VerifyArchiveVersion(curVer) && curVer.major != INT16_MAX;
+#endif
 
     if (std::filesystem::exists(main_path) && !shouldRegen) {
         archiveFiles.push_back(main_path);

@@ -50,7 +50,7 @@ void ResourceManager::Init(const std::vector<std::string>& archivePaths,
     mResourceLoader = std::make_shared<ResourceLoader>();
     mArchiveManager = std::make_shared<ArchiveManager>();
     GetArchiveManager()->Init(archivePaths, validHashes);
-
+#ifndef __vita__
     // the extra `- 1` is because we reserve an extra thread for spdlog
     size_t threadCount = std::max(1, (int32_t)(std::thread::hardware_concurrency() - reservedThreadCount - 1));
     mThreadPool = std::make_shared<BS::thread_pool>(threadCount);
@@ -59,6 +59,7 @@ void ResourceManager::Init(const std::vector<std::string>& archivePaths,
         // Nothing ever unpauses the thread pool since nothing will ever try to load the archive again.
         mThreadPool->pause();
     }
+#endif
 }
 
 ResourceManager::~ResourceManager() {
@@ -153,6 +154,7 @@ std::shared_ptr<IResource> ResourceManager::LoadResourceProcess(const ResourceId
     cachedResource = GetCachedResource(identifier, true);
 
     {
+#ifndef __vita__
         const std::lock_guard<std::mutex> lock(mMutex);
 
         if (cachedResource != nullptr) {
@@ -160,7 +162,7 @@ std::shared_ptr<IResource> ResourceManager::LoadResourceProcess(const ResourceId
             // cache.
             resource = cachedResource;
         }
-
+#endif
         // Set the cache to the loaded resource
         if (resource != nullptr) {
             mResourceCache[identifier] = resource;
@@ -183,39 +185,69 @@ std::shared_ptr<IResource> ResourceManager::LoadResourceProcess(const std::strin
     return LoadResourceProcess({ filePath, mDefaultCacheOwner, mDefaultCacheArchive }, loadExact, initData);
 }
 
+#ifdef __vita__
+std::shared_ptr<IResource>
+ResourceManager::LoadResourceAsync(const ResourceIdentifier& identifier, bool loadExact,
+#else
 std::shared_future<std::shared_ptr<IResource>>
 ResourceManager::LoadResourceAsync(const ResourceIdentifier& identifier, bool loadExact, BS::priority_t priority,
+#endif
                                    std::shared_ptr<ResourceInitData> initData) {
     // Check for and remove the OTR signature
     if (OtrSignatureCheck(identifier.Path.c_str())) {
         auto newFilePath = identifier.Path.substr(7);
+#ifdef __vita__
+		return LoadResourceAsync({ newFilePath, identifier.Owner, identifier.Parent }, loadExact);
+#else
         return LoadResourceAsync({ newFilePath, identifier.Owner, identifier.Parent }, loadExact, priority);
+#endif
     }
 
     // Check the cache before queueing the job.
     auto cacheCheck = GetCachedResource(identifier, loadExact);
     if (cacheCheck) {
+#ifdef __vita__
+		return cacheCheck;
+#else
         auto promise = std::make_shared<std::promise<std::shared_ptr<IResource>>>();
         promise->set_value(cacheCheck);
         return promise->get_future().share();
+#endif
     }
 
+#ifdef __vita__
+	return LoadResourceProcess(identifier, loadExact, initData);
+#else
     return mThreadPool->submit_task(
         [this, identifier, loadExact, initData]() -> std::shared_ptr<IResource> {
             return LoadResourceProcess(identifier, loadExact, initData);
         },
         priority);
+#endif
 }
 
+#ifdef __vita__
+std::shared_ptr<IResource>
+ResourceManager::LoadResourceAsync(const std::string& filePath, bool loadExact,
+#else
 std::shared_future<std::shared_ptr<IResource>>
 ResourceManager::LoadResourceAsync(const std::string& filePath, bool loadExact, BS::priority_t priority,
+#endif
                                    std::shared_ptr<ResourceInitData> initData) {
+#ifdef __vita__
+    return LoadResourceAsync({ filePath, mDefaultCacheOwner, mDefaultCacheArchive }, loadExact, initData);
+#else
     return LoadResourceAsync({ filePath, mDefaultCacheOwner, mDefaultCacheArchive }, loadExact, priority, initData);
+#endif
 }
 
 std::shared_ptr<IResource> ResourceManager::LoadResource(const ResourceIdentifier& identifier, bool loadExact,
                                                          std::shared_ptr<ResourceInitData> initData) {
+#ifdef __vita__
+	auto resource = LoadResourceAsync(identifier, loadExact, initData);
+#else
     auto resource = LoadResourceAsync(identifier, loadExact, BS::pr::highest, initData).get();
+#endif
     if (resource == nullptr) {
         SPDLOG_TRACE("Failed to load resource file at path {}", identifier.Path);
     }
@@ -251,7 +283,9 @@ ResourceManager::CheckCache(const ResourceIdentifier& identifier, bool loadExact
         }
     }
 
+#ifndef __vita__
     const std::lock_guard<std::mutex> lock(mMutex);
+#endif
 
     auto cacheFind = mResourceCache.find(identifier);
     if (cacheFind == mResourceCache.end()) {
@@ -315,6 +349,12 @@ ResourceManager::LoadResourcesProcess(const ResourceFilter& filter) {
     return loadedList;
 }
 
+#ifdef __vita__
+std::shared_ptr<std::vector<std::shared_ptr<IResource>>>
+ResourceManager::LoadResourcesAsync(const ResourceFilter& filter) {
+    return LoadResourcesProcess(filter);
+}
+#else
 std::shared_future<std::shared_ptr<std::vector<std::shared_ptr<IResource>>>>
 ResourceManager::LoadResourcesAsync(const ResourceFilter& filter, BS::priority_t priority) {
     return mThreadPool->submit_task(
@@ -323,21 +363,45 @@ ResourceManager::LoadResourcesAsync(const ResourceFilter& filter, BS::priority_t
         },
         priority);
 }
+#endif
 
+#ifdef __vita__
+std::shared_ptr<std::vector<std::shared_ptr<IResource>>>
+ResourceManager::LoadResourcesAsync(const std::string& searchMask) {
+    return LoadResourcesAsync({ { searchMask }, {}, mDefaultCacheOwner, mDefaultCacheArchive });
+}
+#else
 std::shared_future<std::shared_ptr<std::vector<std::shared_ptr<IResource>>>>
 ResourceManager::LoadResourcesAsync(const std::string& searchMask, BS::priority_t priority) {
     return LoadResourcesAsync({ { searchMask }, {}, mDefaultCacheOwner, mDefaultCacheArchive }, priority);
 }
+#endif
 
 std::shared_ptr<std::vector<std::shared_ptr<IResource>>> ResourceManager::LoadResources(const std::string& searchMask) {
     return LoadResources({ { searchMask }, {}, mDefaultCacheOwner, mDefaultCacheArchive });
 }
 
 std::shared_ptr<std::vector<std::shared_ptr<IResource>>> ResourceManager::LoadResources(const ResourceFilter& filter) {
+#ifdef __vita__
+	return LoadResourcesAsync(filter);
+#else
     return LoadResourcesAsync(filter, BS::pr::highest).get();
+#endif
 }
 
 void ResourceManager::DirtyResources(const ResourceFilter& filter) {
+#ifdef __vita__
+	auto list = GetArchiveManager()->ListFiles(filter.IncludeMasks, filter.ExcludeMasks);
+    for (const auto& key : *list.get()) {
+        auto resource = GetCachedResource({ key, filter.Owner, filter.Parent });
+        // If it's a resource, we will set the dirty flag, else we will just unload it.
+        if (resource != nullptr) {
+            resource->Dirty();
+        } else {
+            UnloadResource({ key, filter.Owner, filter.Parent });
+        }
+    }
+#else
     mThreadPool->submit_task([this, filter]() -> void {
         auto list = GetArchiveManager()->ListFiles(filter.IncludeMasks, filter.ExcludeMasks);
 
@@ -351,12 +415,22 @@ void ResourceManager::DirtyResources(const ResourceFilter& filter) {
             }
         }
     });
+#endif
 }
 
 void ResourceManager::DirtyResources(const std::string& searchMask) {
     DirtyResources({ { searchMask }, {}, mDefaultCacheOwner, mDefaultCacheArchive });
 }
 
+#ifdef __vita__
+void ResourceManager::UnloadResourcesAsync(const std::string& searchMask) {
+    UnloadResourcesAsync({ { searchMask }, {}, mDefaultCacheOwner, mDefaultCacheArchive });
+}
+
+void ResourceManager::UnloadResourcesAsync(const ResourceFilter& filter) {
+    UnloadResourcesProcess(filter);
+}
+#else
 void ResourceManager::UnloadResourcesAsync(const std::string& searchMask, BS::priority_t priority) {
     UnloadResourcesAsync({ { searchMask }, {}, mDefaultCacheOwner, mDefaultCacheArchive }, priority);
 }
@@ -364,6 +438,7 @@ void ResourceManager::UnloadResourcesAsync(const std::string& searchMask, BS::pr
 void ResourceManager::UnloadResourcesAsync(const ResourceFilter& filter, BS::priority_t priority) {
     mThreadPool->submit_task([this, filter]() -> void { UnloadResourcesProcess(filter); }, priority);
 }
+#endif
 
 void ResourceManager::UnloadResources(const std::string& searchMask) {
     UnloadResources({ { searchMask }, {}, mDefaultCacheOwner, mDefaultCacheArchive });

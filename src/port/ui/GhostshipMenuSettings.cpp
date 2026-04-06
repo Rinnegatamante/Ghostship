@@ -131,12 +131,14 @@ void GhostshipMenu::AddMenuSettings() {
 
     AddWidget(path, "About", WIDGET_SEPARATOR_TEXT);
     AddWidget(path, "Ghostship", WIDGET_TEXT);
+#ifndef __vita__
     if (gGitCommitTag[0] != 0) {
         AddWidget(path, gBuildVersion, WIDGET_TEXT);
     } else {
         AddWidget(path, ("Branch: " + std::string(gGitBranch)), WIDGET_TEXT);
         AddWidget(path, ("Commit: " + std::string(gGitCommitHash)), WIDGET_TEXT);
     }
+#endif
     // for (uint32_t i = 0; i < ResourceMgr_GetNumGameVersions(); i++) {
     //     AddWidget(path, GetGameVersionString(i), WIDGET_TEXT);
     // }

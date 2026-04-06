@@ -13,9 +13,11 @@
 #include "ship/resource/archive/Archive.h"
 #include "ship/resource/archive/ArchiveManager.h"
 
+#ifndef __vita__
 #define BS_THREAD_POOL_ENABLE_PRIORITY
 #define BS_THREAD_POOL_ENABLE_PAUSE
 #include <BS_thread_pool.hpp>
+#endif
 
 namespace Ship {
 struct File;
@@ -78,28 +80,49 @@ class ResourceManager {
                                                    std::shared_ptr<ResourceInitData> initData = nullptr);
     std::shared_ptr<IResource> LoadResourceProcess(const ResourceIdentifier& identifier, bool loadExact = false,
                                                    std::shared_ptr<ResourceInitData> initData = nullptr);
+#ifdef __vita__
+    std::shared_ptr<IResource>
+    LoadResourceAsync(const std::string& filePath, bool loadExact = false,
+                      std::shared_ptr<ResourceInitData> initData = nullptr);
+    std::shared_ptr<IResource>
+    LoadResourceAsync(const ResourceIdentifier& identifier, bool loadExact = false,
+                      std::shared_ptr<ResourceInitData> initData = nullptr);
+#else
     std::shared_future<std::shared_ptr<IResource>>
     LoadResourceAsync(const std::string& filePath, bool loadExact = false, BS::priority_t priority = BS::pr::normal,
                       std::shared_ptr<ResourceInitData> initData = nullptr);
     std::shared_future<std::shared_ptr<IResource>>
     LoadResourceAsync(const ResourceIdentifier& identifier, bool loadExact = false,
                       BS::priority_t priority = BS::pr::normal, std::shared_ptr<ResourceInitData> initData = nullptr);
+#endif
     size_t UnloadResource(const ResourceIdentifier& identifier);
     size_t UnloadResource(const std::string& filePath);
 
     std::shared_ptr<std::vector<std::shared_ptr<IResource>>> LoadResources(const std::string& searchMask);
     std::shared_ptr<std::vector<std::shared_ptr<IResource>>> LoadResources(const ResourceFilter& filter);
+#ifdef __vita__
+    std::shared_ptr<std::vector<std::shared_ptr<IResource>>>
+    LoadResourcesAsync(const std::string& searchMask);
+    std::shared_ptr<std::vector<std::shared_ptr<IResource>>>
+    LoadResourcesAsync(const ResourceFilter& filter);
+#else
     std::shared_future<std::shared_ptr<std::vector<std::shared_ptr<IResource>>>>
     LoadResourcesAsync(const std::string& searchMask, BS::priority_t priority = BS::pr::normal);
     std::shared_future<std::shared_ptr<std::vector<std::shared_ptr<IResource>>>>
     LoadResourcesAsync(const ResourceFilter& filter, BS::priority_t priority = BS::pr::normal);
+#endif
 
     void DirtyResources(const std::string& searchMask);
     void DirtyResources(const ResourceFilter& filter);
     void UnloadResources(const std::string& searchMask);
     void UnloadResources(const ResourceFilter& filter);
+#ifdef __vita__
+    void UnloadResourcesAsync(const std::string& searchMask);
+    void UnloadResourcesAsync(const ResourceFilter& filter);
+#else
     void UnloadResourcesAsync(const std::string& searchMask, BS::priority_t priority = BS::pr::normal);
     void UnloadResourcesAsync(const ResourceFilter& filter, BS::priority_t priority = BS::pr::normal);
+#endif
 
     bool OtrSignatureCheck(const char* fileName);
     bool IsAltAssetsEnabled();
@@ -135,7 +158,9 @@ class ResourceManager {
         mResourceCache;
     std::shared_ptr<ResourceLoader> mResourceLoader;
     std::shared_ptr<ArchiveManager> mArchiveManager;
+#ifndef __vita__
     std::shared_ptr<BS::thread_pool> mThreadPool;
+#endif
     std::mutex mMutex;
     bool mAltAssetsEnabled = false;
     // Private information for which owner and archive are default.

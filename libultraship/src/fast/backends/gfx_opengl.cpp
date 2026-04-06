@@ -652,7 +652,7 @@ void GfxRenderingAPIOGL::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, size
 }
 
 void GfxRenderingAPIOGL::Init() {
-#ifndef __linux__
+#if !defined(__linux__) && !defined(__vita__)
     glewInit();
 #endif
 
@@ -740,7 +740,11 @@ void GfxRenderingAPIOGL::UpdateFramebufferParameters(int fb_id, uint32_t width, 
 
     width = std::max(width, 1U);
     height = std::max(height, 1U);
+#ifdef __vita__
+	msaa_level = 1;
+#else
     msaa_level = std::min(msaa_level, (uint32_t)mMaxMsaaLevel);
+#endif
 
     glBindFramebuffer(GL_FRAMEBUFFER, fb.fbo);
 
@@ -752,10 +756,12 @@ void GfxRenderingAPIOGL::UpdateFramebufferParameters(int fb_id, uint32_t width, 
                 glBindTexture(GL_TEXTURE_2D, 0);
                 glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fb.clrbuf, 0);
             } else {
+#ifndef __vita__
                 glBindRenderbuffer(GL_RENDERBUFFER, fb.clrbufMsaa);
                 glRenderbufferStorageMultisample(GL_RENDERBUFFER, msaa_level, GL_RGB8, width, height);
                 glBindRenderbuffer(GL_RENDERBUFFER, 0);
                 glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, fb.clrbufMsaa);
+#endif
             }
         }
 
@@ -765,7 +771,9 @@ void GfxRenderingAPIOGL::UpdateFramebufferParameters(int fb_id, uint32_t width, 
             if (msaa_level <= 1) {
                 glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
             } else {
+#ifndef __vita__
                 glRenderbufferStorageMultisample(GL_RENDERBUFFER, msaa_level, GL_DEPTH24_STENCIL8, width, height);
+#endif
             }
             glBindRenderbuffer(GL_RENDERBUFFER, 0);
         }
@@ -879,19 +887,21 @@ void GfxRenderingAPIOGL::CopyFramebuffer(int fb_dst_id, int fb_src_id, int srcX0
     glBindFramebuffer(GL_READ_FRAMEBUFFER, src.fbo);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dst.fbo);
 
+#ifndef __vita__
     // The 0 buffer is a double buffer so we need to choose the back to avoid imgui elements
     if (fb_src_id == 0) {
         glReadBuffer(GL_BACK);
     } else {
         glReadBuffer(GL_COLOR_ATTACHMENT0);
     }
+#endif
 
     glBlitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
     glBindFramebuffer(GL_FRAMEBUFFER, mFrameBuffers[mCurrentFrameBuffer].fbo);
-
+#ifndef __vita__
     glReadBuffer(GL_BACK);
-
+#endif
     glEnable(GL_SCISSOR_TEST);
 }
 
