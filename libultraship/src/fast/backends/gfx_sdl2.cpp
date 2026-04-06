@@ -211,6 +211,9 @@ GfxWindowBackendSDL2::~GfxWindowBackendSDL2() {
 }
 
 void GfxWindowBackendSDL2::SetFullscreenImpl(bool on, bool call_callback) {
+#ifdef __vita__
+	on = false;
+#endif
     if (mFullScreen == on) {
         return;
     }
@@ -322,13 +325,14 @@ static LRESULT CALLBACK gfx_sdl_wnd_proc(HWND h_wnd, UINT message, WPARAM w_para
 
 void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bool startFullScreen, uint32_t width,
                                 uint32_t height, int32_t posX, int32_t posY) {
-    mWindowWidth = width;
-    mWindowHeight = height;
-
 #ifdef __vita__
+    width = 960;
+    height = 545;
     SDL_setenv("VITA_USE_GLSL_TRANSLATOR", "1", 1);
     sceIoMkdir("ux0:data/ghostship/shader_cache", 0777);
 #endif
+    mWindowWidth = width;
+    mWindowHeight = height;
 
 #if SDL_VERSION_ATLEAST(2, 24, 0)
     /* fix DPI scaling issues on Windows */
