@@ -25,7 +25,6 @@ class GameOverlay {
     virtual ~GameOverlay();
 
     void Init();
-    void LoadFont(const std::string& name, float fontSize, const ResourceIdentifier& identifier);
     void LoadFont(const std::string& name, float fontSize, const std::string& path);
     void SetCurrentFont(const std::string& name);
     void Draw();
