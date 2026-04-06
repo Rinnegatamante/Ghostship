@@ -46,11 +46,6 @@ LONG_PTR SDL_WndProc;
 
 #ifdef __vita__
 #include <vitasdk.h>
-extern "C" {
-GLboolean vglInitWithCustomThreshold(int pool_size, int width, int height, int ram_threshold, int cdram_threshold, int phycont_threshold, int cdlg_threshold, SceGxmMultisampleMode msaa);
-void vglSetParamBufferSize(uint32_t size);
-void vglUseTripleBuffering(GLboolean usage);
-};
 #endif
 
 namespace Fast {
@@ -331,8 +326,6 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
     mWindowHeight = height;
 
 #ifdef __vita__
-    vglSetParamBufferSize(6 * 1024 * 1024);
-    vglInitWithCustomThreshold(0, 960, 544, 4 * 1024 * 1024, 0, 0, 0, SCE_GXM_MULTISAMPLE_4X);
     SDL_setenv("VITA_USE_GLSL_TRANSLATOR", "1", 1);
     sceIoMkdir("ux0:data/ghostship/shader_cache", 0777);
 #endif

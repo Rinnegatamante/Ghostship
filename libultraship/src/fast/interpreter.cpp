@@ -86,6 +86,8 @@ typedef enum {
 extern "C" {
 void *vglAlloc(uint32_t size, vglMemType type);
 void vglFree(void*);
+void vglSetParamBufferSize(uint32_t size);
+uint8_t vglInitWithCustomThreshold(int pool_size, int width, int height, int ram_threshold, int cdram_threshold, int phycont_threshold, int cdlg_threshold, SceGxmMultisampleMode msaa);
 };
 #endif
 
@@ -135,6 +137,8 @@ Interpreter::Interpreter() {
     mRsp = new RSP();
     mRdp = new RDP();
 #ifdef __vita__
+    vglSetParamBufferSize(6 * 1024 * 1024);
+    vglInitWithCustomThreshold(0, 960, 544, 4 * 1024 * 1024, 0, 0, 0, SCE_GXM_MULTISAMPLE_4X);
     mBufVbo = mBufVboPtr = (float *)vglAlloc(32 * 1024 * 1024, VGL_MEM_RAM);
 #else
     mBufVbo = new float[MAX_TRI_BUFFER * (32 * 3)];
