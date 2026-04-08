@@ -62,16 +62,10 @@ std::shared_ptr<IResource> ResourceManager::LoadResourceProcess(const std::strin
         }
     }
 #endif
+
     if (!hash)
         hash = XXH3_64bits(filePath.c_str(), filePath.size());
 
-    // While waiting in the queue, another thread could have loaded the resource.
-    // In a last attempt to avoid doing work that will be discarded, let's check if the cached version exists.
-    auto cacheLine = CheckCache(hash, loadExact);
-    auto cachedResource = GetCachedResource(cacheLine);
-    if (cachedResource != nullptr) {
-        return cachedResource;
-    }
 #ifndef __vita__
     // Check for resource load errors which can indicate an alternate asset.
     // If we are attempting to load an alternate asset, we can return null
@@ -90,6 +84,7 @@ std::shared_ptr<IResource> ResourceManager::LoadResourceProcess(const std::strin
         }
     }
 #endif
+
     // Get the file from the OTR
     auto file = LoadFileProcess(filePath);
     if (file == nullptr) {
@@ -358,8 +353,7 @@ size_t ResourceManager::UnloadResource(uint64_t hash) {
 }
 
 bool ResourceManager::OtrSignatureCheck(const char* fileName) {
-    static const char* sOtrSignature = "__OTR__";
-    return strncmp(fileName, sOtrSignature, strlen(sOtrSignature)) == 0;
+	return fileName[0] == '_';
 }
 
 bool ResourceManager::IsAltAssetsEnabled() {
