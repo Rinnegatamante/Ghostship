@@ -575,8 +575,12 @@ uint8_t GameEngine::GetBankIdByName(const std::string& name) {
     return 0;
 }
 
+static uint32_t _gameVersion = 0xDEADBEEF;
+
 uint32_t GameEngine::GetGameVersion() {
-    return Ship::Context::GetInstance()->GetResourceManager()->GetArchiveManager()->GetGameVersions()[0];
+	if (_gameVersion == 0xDEADBEEF)
+		_gameVersion = Ship::Context::GetInstance()->GetResourceManager()->GetArchiveManager()->GetGameVersions()[0];
+    return _gameVersion;
 }
 
 void GameEngine::RunCommands(Gfx* Commands, const std::vector<std::unordered_map<Mtx*, MtxF>>& mtx_replacements) {
