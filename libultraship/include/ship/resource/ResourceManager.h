@@ -40,9 +40,6 @@ class ResourceManager {
     std::shared_ptr<IResource> LoadResourceProcess(const std::string& filePath, bool loadExact = false,
                                                    std::shared_ptr<ResourceInitData> initData = nullptr,
                                                    uint64_t hash = 0);
-    std::shared_ptr<IResource> LoadResourceProcess(const char *filePath,
-                                                   std::shared_ptr<ResourceInitData> initData = nullptr,
-                                                   uint64_t hash = 0);
     std::shared_ptr<IResource>
     LoadResourceAsync(const std::string& filePath, bool loadExact = false,
                       std::shared_ptr<ResourceInitData> initData = nullptr);
