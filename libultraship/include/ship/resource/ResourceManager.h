@@ -40,9 +40,15 @@ class ResourceManager {
     std::shared_ptr<IResource> LoadResourceProcess(const std::string& filePath, bool loadExact = false,
                                                    std::shared_ptr<ResourceInitData> initData = nullptr,
                                                    uint64_t hash = 0);
+    std::shared_ptr<IResource> LoadResourceProcess(const char *filePath,
+                                                   std::shared_ptr<ResourceInitData> initData = nullptr,
+                                                   uint64_t hash = 0);
     std::shared_ptr<IResource>
     LoadResourceAsync(const std::string& filePath, bool loadExact = false,
                       std::shared_ptr<ResourceInitData> initData = nullptr);
+    std::shared_ptr<IResource>
+    LoadResourceAsync(const char *filePath, bool loadExact,
+                      std::shared_ptr<ResourceInitData> initData, size_t sz);
     size_t UnloadResource(uint64_t hash);
     size_t UnloadResource(const std::string& filePath);
 
@@ -57,7 +63,8 @@ class ResourceManager {
     bool IsAltAssetsEnabled();
     void SetAltAssetsEnabled(bool isEnabled);
     std::shared_ptr<File> LoadFileProcess(const std::string& filePath);
-
+	std::shared_ptr<File> LoadFileProcess(const std::string& filePath);
+	
     size_t GetResourceSize(std::shared_ptr<IResource> resource);
     size_t GetResourceSize(const char* name);
     size_t GetResourceSize(uint64_t crc);

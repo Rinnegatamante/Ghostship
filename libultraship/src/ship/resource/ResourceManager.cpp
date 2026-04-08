@@ -119,13 +119,57 @@ std::shared_ptr<IResource> ResourceManager::LoadResourceProcess(const std::strin
     return resource;
 }
 
+std::shared_ptr<IResource> ResourceManager::LoadResourceProcess(const char *filePath,
+                                                                std::shared_ptr<ResourceInitData> initData, uint64_t hash) {
+    // Get the file from the OTR
+    auto file = LoadFileProcess(filePath);
+    if (file == nullptr) {
+        SPDLOG_TRACE("Failed to load resource file at path {}", filePath);
+        mResourceCache[hash] = ResourceLoadError::NotFound;
+        return nullptr;
+    }
+
+    // Transform the raw data into a resource
+    auto resource = GetResourceLoader()->LoadResource(filePath, file, initData);
+
+    {
+        // Set the cache to the loaded resource
+        if (resource != nullptr) {
+            mResourceCache[hash] = resource;
+        } else {
+            mResourceCache[hash] = ResourceLoadError::NotFound;
+        }
+    }
+
+    if (resource != nullptr) {
+        SPDLOG_TRACE("Loaded Resource {} on ResourceManager", filePath);
+    } else {
+        SPDLOG_TRACE("Resource load FAILED {} on ResourceManager", filePath);
+    }
+
+    return resource;
+}
+
+std::shared_ptr<IResource>
+ResourceManager::LoadResourceAsync(const char *filePath, bool loadExact,
+                                   std::shared_ptr<ResourceInitData> initData, size_t sz) {
+	uint64_t hash = XXH3_64bits(filePath, sz);
+
+    // Check the cache before queueing the job.
+    auto cacheCheck = GetCachedResource(hash, loadExact);
+    if (cacheCheck) {
+        return cacheCheck;
+    }
+
+    return LoadResourceProcess(filePath, initData, hash);
+}
+
 std::shared_ptr<IResource>
 ResourceManager::LoadResourceAsync(const std::string& filePath, bool loadExact,
                                    std::shared_ptr<ResourceInitData> initData) {
     // Check for and remove the OTR signature
     if (OtrSignatureCheck(filePath.c_str())) {
-        auto newFilePath = filePath.substr(7);
-        return LoadResourceAsync(newFilePath, loadExact, initData);
+        return LoadResourceAsync(&filePath.c_str()[7], loadExact, initData, filePath.size() - 7);
     }
     
     uint64_t hash = XXH3_64bits(filePath.c_str(), filePath.size());
