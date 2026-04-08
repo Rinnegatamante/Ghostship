@@ -62,7 +62,6 @@ class ResourceManager {
     bool OtrSignatureCheck(const char* fileName);
     bool IsAltAssetsEnabled();
     void SetAltAssetsEnabled(bool isEnabled);
-    std::shared_ptr<File> LoadFileProcess(const std::string& filePath);
 	std::shared_ptr<File> LoadFileProcess(const std::string& filePath);
 	
     size_t GetResourceSize(std::shared_ptr<IResource> resource);
