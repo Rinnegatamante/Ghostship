@@ -778,7 +778,7 @@ extern "C" uint8_t* GameEngine_LoadTranslation(const char* key) {
 }
 
 extern "C" bool GameEngine_OTRSigCheck(const char* data) {
-    return Ship::Context::GetInstance()->GetResourceManager()->OtrSignatureCheck(data);
+    return data[0] == '_';
 }
 
 extern "C" Animation* GameEngine_LoadAnimation(const uint32_t animId) {
