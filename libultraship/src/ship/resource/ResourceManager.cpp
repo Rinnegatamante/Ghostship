@@ -50,7 +50,7 @@ std::shared_ptr<IResource> ResourceManager::LoadResourceProcess(const std::strin
         const auto newFilePath = filePath.substr(7);
         return LoadResourceProcess(newFilePath, false, initData);
     }
-
+#ifndef __vita__
     // Attempt to load the alternate version of the asset, if we fail then we continue trying to load the standard
     // asset.
     if (!loadExact && mAltAssetsEnabled && !filePath.starts_with(IResource::gAltAssetPrefix)) {
@@ -61,7 +61,7 @@ std::shared_ptr<IResource> ResourceManager::LoadResourceProcess(const std::strin
             return altResource;
         }
     }
-    
+#endif
     if (!hash)
         hash = XXH3_64bits(filePath.c_str(), filePath.size());
 
@@ -72,7 +72,7 @@ std::shared_ptr<IResource> ResourceManager::LoadResourceProcess(const std::strin
     if (cachedResource != nullptr) {
         return cachedResource;
     }
-
+#ifndef __vita__
     // Check for resource load errors which can indicate an alternate asset.
     // If we are attempting to load an alternate asset, we can return null
     if (!loadExact && mAltAssetsEnabled && filePath.starts_with(IResource::gAltAssetPrefix)) {
@@ -89,7 +89,7 @@ std::shared_ptr<IResource> ResourceManager::LoadResourceProcess(const std::strin
             }
         }
     }
-
+#endif
     // Get the file from the OTR
     auto file = LoadFileProcess(filePath);
     if (file == nullptr) {
@@ -201,6 +201,7 @@ std::shared_ptr<IResource> ResourceManager::LoadResource(uint64_t crc, bool load
 
 std::variant<ResourceManager::ResourceLoadError, std::shared_ptr<IResource>>
 ResourceManager::CheckCache(const std::string& filePath, bool loadExact) {
+#ifndef __vita__
     if (!loadExact && mAltAssetsEnabled && !filePath.starts_with(IResource::gAltAssetPrefix)) {
         const auto altPath = IResource::gAltAssetPrefix + filePath;
         auto altCacheResult = CheckCache(altPath, loadExact);
@@ -211,7 +212,7 @@ ResourceManager::CheckCache(const std::string& filePath, bool loadExact) {
             return altCacheResult;
         }
     }
-    
+#endif
     uint64_t hash = XXH3_64bits(filePath.c_str(), filePath.size());
     auto cacheFind = mResourceCache.find(hash);
     if (cacheFind == mResourceCache.end()) {
