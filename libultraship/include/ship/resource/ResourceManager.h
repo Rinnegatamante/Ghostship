@@ -76,15 +76,10 @@ class ResourceManager {
   protected:
     std::shared_ptr<std::vector<std::shared_ptr<IResource>>> LoadResourcesProcess(const std::string& searchMask);
     void UnloadResourcesProcess(const std::string& searchMask);
-    std::variant<ResourceLoadError, std::shared_ptr<IResource>> CheckCache(const std::string& filePath,
-                                                                           bool loadExact = false);
-    std::variant<ResourceLoadError, std::shared_ptr<IResource>> CheckCache(uint64_t hash,
-                                                                           bool loadExact = false);
-                                                                           
-    std::shared_ptr<IResource> GetCachedResource(std::variant<ResourceLoadError, std::shared_ptr<IResource>> cacheLine);
-
+    std::shared_ptr<IResource> CheckCache(const std::string& filePath, bool loadExact = false);
+    std::shared_ptr<IResource> CheckCache(uint64_t hash, bool loadExact = false);
   private:
-    std::unordered_map<uint64_t, std::variant<ResourceLoadError, std::shared_ptr<IResource>>> mResourceCache;
+    std::unordered_map<uint64_t, std::shared_ptr<IResource>> mResourceCache;
     std::shared_ptr<ResourceLoader> mResourceLoader;
     std::shared_ptr<ArchiveManager> mArchiveManager;
     bool mAltAssetsEnabled = false;

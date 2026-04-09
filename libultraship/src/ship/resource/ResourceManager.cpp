@@ -50,67 +50,30 @@ std::shared_ptr<IResource> ResourceManager::LoadResourceProcess(const std::strin
         const auto newFilePath = filePath.substr(7);
         return LoadResourceProcess(newFilePath, false, initData);
     }
-#ifndef __vita__
-    // Attempt to load the alternate version of the asset, if we fail then we continue trying to load the standard
-    // asset.
-    if (!loadExact && mAltAssetsEnabled && !filePath.starts_with(IResource::gAltAssetPrefix)) {
-        const auto altPath = IResource::gAltAssetPrefix + filePath;
-        auto altResource = LoadResourceProcess(altPath, loadExact, initData);
-
-        if (altResource != nullptr) {
-            return altResource;
-        }
-    }
-#endif
 
     if (!hash)
         hash = XXH3_64bits(filePath.c_str(), filePath.size());
 	
 	// While waiting in the queue, another thread could have loaded the resource.
     // In a last attempt to avoid doing work that will be discarded, let's check if the cached version exists.
-    auto cacheLine = CheckCache(hash, loadExact);
-    auto cachedResource = GetCachedResource(cacheLine);
+    auto cachedResource = CheckCache(hash, loadExact);
     if (cachedResource != nullptr) {
         return cachedResource;
     }
-
-#ifndef __vita__
-    // Check for resource load errors which can indicate an alternate asset.
-    // If we are attempting to load an alternate asset, we can return null
-    if (!loadExact && mAltAssetsEnabled && filePath.starts_with(IResource::gAltAssetPrefix)) {
-        if (std::holds_alternative<ResourceLoadError>(cacheLine)) {
-            try {
-                // If we have attempted to cache an alternate asset, but failed, we return nullptr and rely on the
-                // calling function to return a regular asset. If we have NOT attempted load already, attempt the load.
-                auto loadError = std::get<ResourceLoadError>(cacheLine);
-                if (loadError != ResourceLoadError::NotCached) {
-                    return nullptr;
-                }
-            } catch (std::bad_variant_access const& e) {
-                // Ignore the exception. This should never happen. The last check should've returned the resource.
-            }
-        }
-    }
-#endif
 
     // Get the file from the OTR
     auto file = LoadFileProcess(filePath);
     if (file == nullptr) {
         SPDLOG_TRACE("Failed to load resource file at path {}", filePath);
-        mResourceCache[hash] = ResourceLoadError::NotFound;
         return nullptr;
     }
 
     // Transform the raw data into a resource
     auto resource = GetResourceLoader()->LoadResource(filePath, file, initData);
 
-    {
-        // Set the cache to the loaded resource
-        if (resource != nullptr) {
-            mResourceCache[hash] = resource;
-        } else {
-            mResourceCache[hash] = ResourceLoadError::NotFound;
-        }
+    // Set the cache to the loaded resource
+    if (resource != nullptr) {
+        mResourceCache[hash] = resource;
     }
 
     if (resource != nullptr) {
@@ -171,34 +134,20 @@ std::shared_ptr<IResource> ResourceManager::LoadResource(uint64_t crc, bool load
     return LoadResource(*hashStr, loadExact, initData);
 }
 
-std::variant<ResourceManager::ResourceLoadError, std::shared_ptr<IResource>>
-ResourceManager::CheckCache(const std::string& filePath, bool loadExact) {
-#ifndef __vita__
-    if (!loadExact && mAltAssetsEnabled && !filePath.starts_with(IResource::gAltAssetPrefix)) {
-        const auto altPath = IResource::gAltAssetPrefix + filePath;
-        auto altCacheResult = CheckCache(altPath, loadExact);
-
-        // If the type held at this cache index is a resource, then we return it.
-        // Else we attempt to load standard definition assets.
-        if (std::holds_alternative<std::shared_ptr<IResource>>(altCacheResult)) {
-            return altCacheResult;
-        }
-    }
-#endif
+std::shared_ptr<IResource> ResourceManager::CheckCache(const std::string& filePath, bool loadExact) {
     uint64_t hash = XXH3_64bits(filePath.c_str(), filePath.size());
     auto cacheFind = mResourceCache.find(hash);
     if (cacheFind == mResourceCache.end()) {
-        return ResourceLoadError::NotCached;
+        return nullptr;
     }
 
     return cacheFind->second;
 }
 
-std::variant<ResourceManager::ResourceLoadError, std::shared_ptr<IResource>>
-ResourceManager::CheckCache(uint64_t hash, bool loadExact) {
+std::shared_ptr<IResource> ResourceManager::CheckCache(uint64_t hash, bool loadExact) {
     auto cacheFind = mResourceCache.find(hash);
     if (cacheFind == mResourceCache.end()) {
-        return ResourceLoadError::NotCached;
+        return nullptr;
     }
 
     return cacheFind->second;
@@ -206,36 +155,12 @@ ResourceManager::CheckCache(uint64_t hash, bool loadExact) {
 
 std::shared_ptr<IResource> ResourceManager::GetCachedResource(const std::string& filePath, bool loadExact) {
     // Gets the cached resource based on filePath.
-    return GetCachedResource(CheckCache(filePath, loadExact));
+    return CheckCache(filePath, loadExact);
 }
 
 std::shared_ptr<IResource> ResourceManager::GetCachedResource(uint64_t hash, bool loadExact) {
     // Gets the cached resource based on filePath.
-    return GetCachedResource(CheckCache(hash, loadExact));
-}
-
-std::shared_ptr<IResource>
-ResourceManager::GetCachedResource(std::variant<ResourceLoadError, std::shared_ptr<IResource>> cacheLine) {
-    // Gets the cached resource based on a cache line std::variant from the cache map.
-    if (std::holds_alternative<std::shared_ptr<IResource>>(cacheLine)) {
-        try {
-            auto resource = std::get<std::shared_ptr<IResource>>(cacheLine);
-
-            if (resource.use_count() <= 0) {
-                return nullptr;
-            }
-
-            if (resource->IsDirty()) {
-                return nullptr;
-            }
-
-            return resource;
-        } catch (std::bad_variant_access const& e) {
-            // Ignore the exception
-        }
-    }
-
-    return nullptr;
+    return CheckCache(hash, loadExact);
 }
 
 std::shared_ptr<std::vector<std::shared_ptr<IResource>>>
@@ -304,7 +229,7 @@ size_t ResourceManager::UnloadResource(const std::string& searchMask) {
     // Store a shared pointer here so that erase doesn't destruct the resource.
     // The resource will attempt to load other resources on the destructor, and this will fail because we already hold
     // the mutex.
-    std::variant<ResourceLoadError, std::shared_ptr<IResource>> value = nullptr;
+    std::shared_ptr<IResource> value = nullptr;
     size_t ret = 0;
     // We can only erase the resource if we have any resources for that owner.
     uint64_t hash = XXH3_64bits(searchMask.c_str(), searchMask.size());
@@ -319,7 +244,7 @@ size_t ResourceManager::UnloadResource(uint64_t hash) {
     // Store a shared pointer here so that erase doesn't destruct the resource.
     // The resource will attempt to load other resources on the destructor, and this will fail because we already hold
     // the mutex.
-    std::variant<ResourceLoadError, std::shared_ptr<IResource>> value = nullptr;
+    std::shared_ptr<IResource> value = nullptr;
     size_t ret = 0;
     // We can only erase the resource if we have any resources for that owner.
     if (mResourceCache.contains(hash)) {
