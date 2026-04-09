@@ -1074,11 +1074,22 @@ void Interpreter::ImportTextureMask(int i, int tile) {
     mRapi->UploadTexture(mTexUploadBuffer, width, height);
 }
 
+#ifdef __vita__
+extern "C" {
+    void normalize3_neon(float v[3], float d[3]);
+    void matmul4_neon(float m0[16], float m1[16], float d[16]);
+};
+#endif
+
 void Interpreter::NormalizeVector(float v[3]) {
+#ifdef __vita__
+	normalize3_neon(v, v);
+#else
     float s = sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
     v[0] /= s;
     v[1] /= s;
     v[2] /= s;
+#endif
 }
 
 void Interpreter::TransposedMatrixMul(float res[3], const float a[3], const float b[4][4]) {
@@ -1088,6 +1099,9 @@ void Interpreter::TransposedMatrixMul(float res[3], const float a[3], const floa
 }
 
 void Interpreter::MatrixMul(float res[4][4], const float a[4][4], const float b[4][4]) {
+#ifdef __vita__
+	matmul4_neon((float *)b, (float *)a, (float *)res);
+#else
     float tmp[4][4];
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++) {
@@ -1095,6 +1109,7 @@ void Interpreter::MatrixMul(float res[4][4], const float a[4][4], const float b[
         }
     }
     memcpy(res, tmp, sizeof(tmp));
+#endif
 }
 
 void Interpreter::CalculateNormalDir(const F3DLight_t* light, float coeffs[3]) {
