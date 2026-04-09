@@ -118,6 +118,26 @@ ResourceManager::LoadResourceAsync(const std::string& filePath, bool loadExact,
     return LoadResourceProcess(filePath, loadExact, initData, hash);
 }
 
+std::shared_ptr<IResource> ResourceManager::LoadResourceFromCStr(const char *filePath, bool loadExact,
+                                                         std::shared_ptr<ResourceInitData> initData) {
+    // Check for and remove the OTR signature
+	size_t sz = strlen(filePath);
+    if (OtrSignatureCheck(filePath)) {
+        filePath = &filePath[7];
+		sz -= 7;
+    }
+	
+	uint64_t hash = XXH3_64bits(filePath, sz);
+
+    // Check the cache before queueing the job.
+    auto cacheCheck = GetCachedResource(hash, loadExact);
+    if (cacheCheck) {
+        return cacheCheck;
+    }
+
+    return LoadResourceProcess(filePath, loadExact, initData, hash);
+}
+
 std::shared_ptr<IResource> ResourceManager::LoadResource(const std::string& filePath, bool loadExact,
                                                          std::shared_ptr<ResourceInitData> initData) {
     return LoadResourceAsync(filePath, loadExact, initData);
@@ -315,7 +335,7 @@ void* ResourceManager::GetResourceRawPointer(std::shared_ptr<IResource> resource
 }
 
 void* ResourceManager::GetResourceRawPointer(const char* name) {
-    auto resource = LoadResource(name);
+    auto resource = LoadResourceFromCStr(name);
 
     return GetResourceRawPointer(resource);
 }

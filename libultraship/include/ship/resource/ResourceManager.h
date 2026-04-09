@@ -37,6 +37,8 @@ class ResourceManager {
                                             std::shared_ptr<ResourceInitData> initData = nullptr);
     std::shared_ptr<IResource> LoadResource(uint64_t crc, bool loadExact = false,
                                             std::shared_ptr<ResourceInitData> initData = nullptr);
+	std::shared_ptr<IResource> LoadResourceFromCStr(const char *filePath, bool loadExact = false,
+                                                         std::shared_ptr<ResourceInitData> initData = nullptr);
     std::shared_ptr<IResource> LoadResourceProcess(const std::string& filePath, bool loadExact = false,
                                                    std::shared_ptr<ResourceInitData> initData = nullptr,
                                                    uint64_t hash = 0);
