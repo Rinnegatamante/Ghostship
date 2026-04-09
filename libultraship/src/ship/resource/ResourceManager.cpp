@@ -65,6 +65,14 @@ std::shared_ptr<IResource> ResourceManager::LoadResourceProcess(const std::strin
 
     if (!hash)
         hash = XXH3_64bits(filePath.c_str(), filePath.size());
+	
+	// While waiting in the queue, another thread could have loaded the resource.
+    // In a last attempt to avoid doing work that will be discarded, let's check if the cached version exists.
+    auto cacheLine = CheckCache(hash, loadExact);
+    auto cachedResource = GetCachedResource(cacheLine);
+    if (cachedResource != nullptr) {
+        return cachedResource;
+    }
 
 #ifndef __vita__
     // Check for resource load errors which can indicate an alternate asset.
