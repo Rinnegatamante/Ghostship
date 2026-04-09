@@ -750,7 +750,8 @@ extern "C" void GameEngine_UnloadSequence(const uint8_t seqId) {
 }
 
 extern "C" uint32_t GameEngine_GetGameVersion() {
-    return Ship::Context::GetInstance()->GetResourceManager()->GetArchiveManager()->GetGameVersions()[0];
+	static uint32_t cachedVersion = Ship::Context::GetInstance()->GetResourceManager()->GetArchiveManager()->GetGameVersions()[0];
+    return cachedVersion;
 }
 
 extern "C" uint8_t* GameEngine_LoadActName(const uint32_t actId) {
