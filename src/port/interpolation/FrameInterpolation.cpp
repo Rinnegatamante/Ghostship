@@ -674,7 +674,7 @@ void FrameInterpolation_ShouldInterpolateFrame(bool shouldInterpolate) {
 }
 
 bool check_if_recording() {
-    return is_recording;
+    return (is_recording && GameEngine::GetInterpolationFPS() != 30);
 }
 
 void FrameInterpolation_StartRecord(void) {
