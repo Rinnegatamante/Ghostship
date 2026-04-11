@@ -6,8 +6,9 @@
 
 #ifdef __cplusplus
 #include <unordered_map>
+#include "robin_hood.h"
 #include "port/CoreMath.h"
-std::unordered_map<Mtx*, MtxF> FrameInterpolation_Interpolate(float step);
+robin_hood::unordered_map<Mtx*, MtxF> FrameInterpolation_Interpolate(float step);
 void FrameInterpolation_ApplyMatrixTransformations(Mat4* matrix, FVector pos, IRotator rot, FVector scale);
 
 extern "C" {

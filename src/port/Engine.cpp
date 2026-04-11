@@ -445,16 +445,7 @@ void GameEngine::StartFrame() const {
 }
 
 uint32_t GameEngine::GetInterpolationFPS() {
-    if (Ship::Context::GetInstance()->GetWindow()->GetWindowBackend() == Ship::WindowBackend::FAST3D_DXGI_DX11) {
-        return CVarGetInteger(CVAR_SETTING("InterpolationFPS"), 30);
-    }
-
-    if (CVarGetInteger(CVAR_SETTING("MatchRefreshRate"), 0)) {
-        return Ship::Context::GetInstance()->GetWindow()->GetCurrentRefreshRate();
-    }
-
-    return std::min<uint32_t>(Ship::Context::GetInstance()->GetWindow()->GetCurrentRefreshRate(),
-                              CVarGetInteger(CVAR_SETTING("InterpolationFPS"), 30));
+    return CVarGetInteger(CVAR_SETTING("InterpolationFPS"), 30);
 }
 
 // Audio
@@ -583,7 +574,7 @@ uint32_t GameEngine::GetGameVersion() {
     return _gameVersion;
 }
 
-void GameEngine::RunCommands(Gfx* Commands, const std::vector<std::unordered_map<Mtx*, MtxF>>& mtx_replacements) {
+void GameEngine::RunCommands(Gfx* Commands, const std::vector<robin_hood::unordered_map<Mtx*, MtxF>>& mtx_replacements) {
     auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetInstance()->GetWindow());
 
     if (wnd == nullptr) {
@@ -610,7 +601,7 @@ void GameEngine::RunCommands(Gfx* Commands, const std::vector<std::unordered_map
 }
 
 void GameEngine::ProcessGfxCommands(Gfx* commands) {
-    std::vector<std::unordered_map<Mtx*, MtxF>> mtx_replacements;
+    std::vector<robin_hood::unordered_map<Mtx*, MtxF>> mtx_replacements;
     auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetInstance()->GetWindow());
 
     int target_fps = GetInterpolationFPS();

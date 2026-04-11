@@ -53,7 +53,7 @@ class GameEngine {
     static bool GenAssetFile(bool exitOnFail = true);
     void AudioInit();
     void StartFrame() const;
-    static void RunCommands(Gfx* Commands, const std::vector<std::unordered_map<Mtx*, MtxF>>& mtx_replacements);
+    static void RunCommands(Gfx* Commands, const std::vector<robin_hood::unordered_map<Mtx*, MtxF>>& mtx_replacements);
     static uint32_t GetInterpolationFPS();
     static void HandleAudioThread();
     static void StartAudioFrame();

@@ -4397,7 +4397,7 @@ void Interpreter::RunGuiOnly() {
     }
 }
 
-void Interpreter::Run(Gfx* commands, const std::unordered_map<Mtx*, MtxF>& mtx_replacements) {
+void Interpreter::Run(Gfx* commands, const robin_hood::unordered_map<Mtx*, MtxF>& mtx_replacements) {
     SpReset();
 
     mGetPixelDepthPending.clear();

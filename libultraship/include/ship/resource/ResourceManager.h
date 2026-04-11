@@ -12,6 +12,7 @@
 #include "ship/resource/ResourceLoader.h"
 #include "ship/resource/archive/Archive.h"
 #include "ship/resource/archive/ArchiveManager.h"
+#include "robin_hood.h"
 
 namespace Ship {
 struct File;
@@ -81,7 +82,7 @@ class ResourceManager {
     std::shared_ptr<IResource> CheckCache(const std::string& filePath, bool loadExact = false);
     std::shared_ptr<IResource> CheckCache(uint64_t hash, bool loadExact = false);
   private:
-    std::unordered_map<uint64_t, std::shared_ptr<IResource>> mResourceCache;
+    robin_hood::unordered_map<uint64_t, std::shared_ptr<IResource>> mResourceCache;
     std::shared_ptr<ResourceLoader> mResourceLoader;
     std::shared_ptr<ArchiveManager> mArchiveManager;
     bool mAltAssetsEnabled = false;

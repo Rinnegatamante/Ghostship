@@ -46,13 +46,15 @@ std::shared_ptr<File> ResourceManager::LoadFileProcess(const std::string& filePa
 std::shared_ptr<IResource> ResourceManager::LoadResourceProcess(const std::string& filePath, bool loadExact,
                                                                 std::shared_ptr<ResourceInitData> initData, uint64_t hash) {
     // Check for and remove the OTR signature
-    if (!hash && OtrSignatureCheck(filePath.c_str())) {
-        const auto newFilePath = filePath.substr(7);
-        return LoadResourceProcess(newFilePath, false, initData);
-    }
-
-    if (!hash)
+    if (!hash) {
+		if (OtrSignatureCheck(filePath.c_str())) {
+            const auto newFilePath = filePath.substr(7);
+			hash = XXH3_64bits(newFilePath.c_str(), newFilePath.size());
+            return LoadResourceProcess(newFilePath, loadExact, initData, hash);
+		}
+		
         hash = XXH3_64bits(filePath.c_str(), filePath.size());
+	}
 	
 	// While waiting in the queue, another thread could have loaded the resource.
     // In a last attempt to avoid doing work that will be discarded, let's check if the cached version exists.
