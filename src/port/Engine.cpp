@@ -410,7 +410,7 @@ void GameEngine::Create() {
     instance->AudioInit();
     instance->LoadDictionary();
     instance->LoadPlayerAnims();
-#if defined(__SWITCH__) || defined(__WIIU__)
+#if defined(__SWITCH__) || defined(__WIIU__) || defined(__vita__)
     CVarRegisterInteger("gControlNav", 1); // always enable controller nav on switch/wii u
 #endif
     DevConsole_Init();
