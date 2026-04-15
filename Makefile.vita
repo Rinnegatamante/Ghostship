@@ -52,7 +52,7 @@ LIBS = -lstorm -lgfxd -lzip -lbzip2 -lzstd -lz -lyaml-cpp -llzma -lssl -lcrypto 
 FINAL_SOURCES := f
 
 CFILES := $(foreach dir,$(SOURCES), $(wildcard $(dir)/*.c)) \
-	lib/src/alBnkfNew.c lib/src/guLookAtRef.c lib/src/guMtxF2L.c lib/src/guNormalize.c lib/src/guOrthoF.c \
+	lib/src/alBnkfNew.c lib/src/guLookAtRef.c lib/src/guMtxF2L.c lib/src/guNormalize.c lib/src/guOrthoF.c lib/src/osAiSetFrequency.c \
 	lib/src/guPerspectiveF.c lib/src/guRotateF.c lib/src/guScaleF.c lib/src/guLookAtF.c lib/src/guTranslateF.c libultraship/imgui/backends/imgui_impl_opengl3.c \
 	libultraship/imgui/backends/imgui_impl_sdl2.c
 CPPFILES := $(foreach dir,$(SOURCES), $(wildcard $(dir)/*.cpp))
