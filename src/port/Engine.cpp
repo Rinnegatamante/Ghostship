@@ -770,7 +770,8 @@ extern "C" uint8_t* GameEngine_LoadTranslation(const char* key) {
 }
 
 extern "C" bool GameEngine_OTRSigCheck(const char* data) {
-    return data[0] == '_';
+    static const char* sOtrSignature = "__OTR__";
+    return strncmp(data, sOtrSignature, strlen(sOtrSignature)) == 0;
 }
 
 extern "C" Animation* GameEngine_LoadAnimation(const uint32_t animId) {

@@ -277,7 +277,8 @@ size_t ResourceManager::UnloadResource(uint64_t hash) {
 }
 
 bool ResourceManager::OtrSignatureCheck(const char* fileName) {
-	return fileName[0] == '_';
+    static const char* sOtrSignature = "__OTR__";
+    return strncmp(fileName, sOtrSignature, strlen(sOtrSignature)) == 0;
 }
 
 bool ResourceManager::IsAltAssetsEnabled() {
