@@ -41,7 +41,7 @@ int SDL_main(int argc, char** argv) {
 int main() {
 #endif
 #ifdef __vita__
-	sceSysmoduleLoadModule(SCE_SYSMODULE_RAZOR_CAPTURE);
+	//sceSysmoduleLoadModule(SCE_SYSMODULE_RAZOR_CAPTURE);
     scePowerSetArmClockFrequency(444);
     scePowerSetBusClockFrequency(222);
     scePowerSetGpuClockFrequency(222);
