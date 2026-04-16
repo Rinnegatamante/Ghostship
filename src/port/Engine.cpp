@@ -427,10 +427,13 @@ void GameEngine::Destroy() {
 #endif
 }
 
+uint32_t interp_fps = 30;
+
 void GameEngine::StartFrame() const {
     using Ship::KbScancode;
     const int32_t dwScancode = this->context->GetWindow()->GetLastScancode();
     this->context->GetWindow()->SetLastScancode(-1);
+	interp_fps = CVarGetInteger(CVAR_SETTING("InterpolationFPS"), 30);
 
     switch (dwScancode) {
         case KbScancode::LUS_KB_TAB: {
@@ -445,7 +448,7 @@ void GameEngine::StartFrame() const {
 }
 
 uint32_t GameEngine::GetInterpolationFPS() {
-    return CVarGetInteger(CVAR_SETTING("InterpolationFPS"), 30);
+    return interp_fps;
 }
 
 // Audio
