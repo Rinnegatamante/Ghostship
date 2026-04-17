@@ -75,6 +75,7 @@ class ResourceManager {
 
     void* GetResourceRawPointer(std::shared_ptr<IResource> resource);
     void* GetResourceRawPointer(const char* name);
+	void* GetOtrResourceRawPointer(const char* name);
     void* GetResourceRawPointer(uint64_t crc);
 
   protected:

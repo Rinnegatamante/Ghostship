@@ -1,6 +1,6 @@
 #pragma once
 
-#define LOAD_ASSET(path) (path == NULL ? NULL : (GameEngine_OTRSigCheck((const char*) path) ? ResourceGetDataByName((const char*) path) : path))
+#define LOAD_ASSET(path) (path == NULL ? NULL : (GameEngine_OTRSigCheck((const char*) path) ? ResourceGetDataByNameOtr((const char*) path) : path))
 #define LOAD_ASSET_RAW(path) ResourceGetDataByName((const char*) path)
 
 #ifdef __cplusplus

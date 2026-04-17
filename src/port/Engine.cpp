@@ -569,11 +569,8 @@ uint8_t GameEngine::GetBankIdByName(const std::string& name) {
     return 0;
 }
 
-static uint32_t _gameVersion = 0xDEADBEEF;
-
 uint32_t GameEngine::GetGameVersion() {
-	if (_gameVersion == 0xDEADBEEF)
-		_gameVersion = Ship::Context::GetInstance()->GetResourceManager()->GetArchiveManager()->GetGameVersions()[0];
+	static uint32_t _gameVersion = Ship::Context::GetInstance()->GetResourceManager()->GetArchiveManager()->GetGameVersions()[0];
     return _gameVersion;
 }
 

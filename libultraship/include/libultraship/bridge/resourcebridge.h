@@ -26,6 +26,7 @@ size_t ResourceGetSizeByCrc(uint64_t crc);
 uint8_t ResourceGetIsCustomByName(const char* name);
 uint8_t ResourceGetIsCustomByCrc(uint64_t crc);
 void* ResourceGetDataByName(const char* name);
+void* ResourceGetDataByNameOtr(const char* name);
 void* ResourceGetDataByCrc(uint64_t crc);
 uint16_t ResourceGetTexWidthByName(const char* name);
 uint16_t ResourceGetTexWidthByCrc(uint64_t crc);
