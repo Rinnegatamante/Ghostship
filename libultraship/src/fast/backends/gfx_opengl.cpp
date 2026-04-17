@@ -233,8 +233,8 @@ static std::string BuildVsShaderInline(const CCFeatures& cc_features, size_t& ou
         }
     }
 
-    if (cc_features.opt_fog)      append_line(vs_buf, &vs_len, "vFog = aFog;");
-    if (cc_features.opt_grayscale) append_line(vs_buf, &vs_len, "vGrayscaleColor = aGrayscaleColor;");
+    if (cc_features.opt_fog)      append_line(vs_buf, &vs_len, "vFog = aFog / 255.f;");
+    if (cc_features.opt_grayscale) append_line(vs_buf, &vs_len, "vGrayscaleColor = aGrayscaleColor / 255.f;");
 
     for (int i = 0; i < cc_features.numInputs; i++) {
         vs_len += sprintf(vs_buf + vs_len, "vInput%d = aInput%d;\n", i + 1, i + 1);

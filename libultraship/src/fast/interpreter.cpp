@@ -162,7 +162,7 @@ void GfxSetInstance(std::shared_ptr<Interpreter> gfx) {
 }
 
 void Interpreter::Flush() {
-    if (mBufVboLen > 0) {
+    if (mBufVboNumTris > 0) {
         mRapi->DrawTriangles(mBufVbo, mBufVboLen, mBufVboNumTris);
 #ifdef __vita__
         mBufVbo += mBufVboLen;
@@ -495,13 +495,15 @@ bool Interpreter::TextureCacheLookup(int i, const TextureCacheKey& key) {
     return false;
 }
 
+/*
 std::string_view Interpreter::GetBaseTexturePath(std::string_view path) {
     if (path.starts_with(Ship::IResource::gAltAssetPrefix)) {
         return path.substr(Ship::IResource::gAltAssetPrefix.length());
     }
 
     return path;
-}
+}*/
+#define GetBaseTexturePath(x) (x)
 
 void Interpreter::TextureCacheDelete(const uint8_t* origAddr) {
     auto it = mTextureCache.map.begin();
@@ -1443,14 +1445,10 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
 
         auto cull_type = mRsp->geometry_mode & cull_both;
 
-        if (cull_type == cull_front) {
-            if (cross <= 0) {
-                return;
-            }
-        } else if (cull_type == cull_back) {
-            if (cross >= 0) {
-                return;
-            }
+        if (cull_type == cull_front && cross <= 0) {
+            return;
+        } else if (cull_type == cull_back && cross >= 0) {
+            return;
         } else if (cull_type == cull_both) {
             // Why is this even an option?
             return;
@@ -1474,16 +1472,17 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
     }
 
     if (mRdp->viewport_or_scissor_changed) {
-        if (memcmp(&mRdp->viewport, &mRenderingState.viewport, sizeof(mRdp->viewport)) != 0) {
+		// In SM64 viewport and scissor change always together, so no need to memcp
+        //if (memcmp(&mRdp->viewport, &mRenderingState.viewport, sizeof(mRdp->viewport)) != 0) {
             Flush();
             mRapi->SetViewport(mRdp->viewport.x, mRdp->viewport.y, mRdp->viewport.width, mRdp->viewport.height);
             mRenderingState.viewport = mRdp->viewport;
-        }
-        if (memcmp(&mRdp->scissor, &mRenderingState.scissor, sizeof(mRdp->scissor)) != 0) {
-            Flush();
+        //}
+        //if (memcmp(&mRdp->scissor, &mRenderingState.scissor, sizeof(mRdp->scissor)) != 0) {
+        //    Flush();
             mRapi->SetScissor(mRdp->scissor.x, mRdp->scissor.y, mRdp->scissor.width, mRdp->scissor.height);
             mRenderingState.scissor = mRdp->scissor;
-        }
+        //}
         mRdp->viewport_or_scissor_changed = false;
     }
 
@@ -1652,7 +1651,7 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
     }
     if (prg != mRenderingState.mShaderProgram) {
         Flush();
-        mRapi->UnloadShader(mRenderingState.mShaderProgram);
+        //mRapi->UnloadShader(mRenderingState.mShaderProgram);
         mRapi->LoadShader(prg);
         mRenderingState.mShaderProgram = prg;
     }
@@ -1671,20 +1670,23 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
     for (int i = 0; i < 3; i++) {
         float z = v_arr[i]->z, w = v_arr[i]->w;
         if (clip_parameters.z_is_from_0_to_1) {
-            z = (z + w) / 2.0f;
+            z = (z + w) * 0.5f;
         }
 
         mBufVbo[mBufVboLen++] = v_arr[i]->x;
         mBufVbo[mBufVboLen++] = clip_parameters.invertY ? -v_arr[i]->y : v_arr[i]->y;
         mBufVbo[mBufVboLen++] = z;
         mBufVbo[mBufVboLen++] = w;
-
+		
+		float u_base = v_arr[i]->u * 0.03125f;
+		float v_base = v_arr[i]->v * 0.03125f;
+		
         for (int t = 0; t < 2; t++) {
             if (!usedTextures[t]) {
                 continue;
             }
-            float u = v_arr[i]->u / 32.0f;
-            float v = v_arr[i]->v / 32.0f;
+            float u = u_base;
+            float v = v_base;
 
             int shifts = mRdp->texture_tile[mRdp->first_tile_index + t].shifts;
             int shiftt = mRdp->texture_tile[mRdp->first_tile_index + t].shiftt;
@@ -1703,8 +1705,8 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
                 }
             }
 
-            u -= mRdp->texture_tile[mRdp->first_tile_index + t].uls / 4.0f;
-            v -= mRdp->texture_tile[mRdp->first_tile_index + t].ult / 4.0f;
+            u -= mRdp->texture_tile[mRdp->first_tile_index + t].uls * 0.25f;
+            v -= mRdp->texture_tile[mRdp->first_tile_index + t].ult * 0.25f;
 
             if ((mRdp->other_mode_h & (3U << G_MDSFT_TEXTFILT)) != G_TF_POINT) {
                 // Linear filter adds 0.5f to the coordinates
@@ -1730,17 +1732,17 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
         }
 
         if (use_fog) {
-            mBufVbo[mBufVboLen++] = mRdp->fog_color.r / 255.0f;
-            mBufVbo[mBufVboLen++] = mRdp->fog_color.g / 255.0f;
-            mBufVbo[mBufVboLen++] = mRdp->fog_color.b / 255.0f;
-            mBufVbo[mBufVboLen++] = v_arr[i]->color.a / 255.0f; // fog factor (not alpha)
+            mBufVbo[mBufVboLen++] = mRdp->fog_color.r;
+            mBufVbo[mBufVboLen++] = mRdp->fog_color.g;
+            mBufVbo[mBufVboLen++] = mRdp->fog_color.b;
+            mBufVbo[mBufVboLen++] = v_arr[i]->color.a; // fog factor (not alpha)
         }
 
         if (use_grayscale) {
-            mBufVbo[mBufVboLen++] = mRdp->grayscale_color.r / 255.0f;
-            mBufVbo[mBufVboLen++] = mRdp->grayscale_color.g / 255.0f;
-            mBufVbo[mBufVboLen++] = mRdp->grayscale_color.b / 255.0f;
-            mBufVbo[mBufVboLen++] = mRdp->grayscale_color.a / 255.0f; // lerp interpolation factor (not alpha)
+            mBufVbo[mBufVboLen++] = mRdp->grayscale_color.r;
+            mBufVbo[mBufVboLen++] = mRdp->grayscale_color.g;
+            mBufVbo[mBufVboLen++] = mRdp->grayscale_color.b;
+            mBufVbo[mBufVboLen++] = mRdp->grayscale_color.a; // lerp interpolation factor (not alpha)
         }
 
         for (int j = 0; j < numInputs; j++) {
@@ -1822,10 +1824,14 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
         // mBufVbo[mBufVboLen++] = color->a / 255.0f;
     }
 
+#ifdef __vita__
+	mBufVboNumTris++;
+#else
     if (++mBufVboNumTris == MAX_TRI_BUFFER) {
         // if (++mBufVbo_num_tris == 1) {
         Flush();
     }
+#endif
 }
 
 void Interpreter::GfxSpGeometryMode(uint32_t clear, uint32_t set) {
