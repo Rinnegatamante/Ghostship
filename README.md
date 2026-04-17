@@ -1,3 +1,23 @@
+# Ghostship Vita
+
+This is a port of Ghostship (v.1.0.2 with some improvements from develop branch) for PSVita.
+
+## Setup Instructions
+- Download [Ghostship v.1.0.2](https://github.com/HarbourMasters/Ghostship/releases/tag/1.0.2) for PC.
+- Follow its instructions to generate `sm64.o2r`.
+- Extract `ghostship.zip` from the Release tab in `ux0:data`.
+- Place `sm64.o2r` and `ghostship.o2r` in `ux0:data/ghostship`.
+- Install the vpk from the Release tab.
+
+## Credits
+- TheIronUniverse for the Livearea assets.
+- hatoving for testing the homebrew.
+
+## vitaGL flags
+HAVE_PTHREAD=1 NO_DEBUG=1 HAVE_GLSL_TEXTURE_SIZE=1 INDICES_SPEEDHACK=1
+
+# Original Readme
+
 # Ghostship
 
 Lead Developers:
