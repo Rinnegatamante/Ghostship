@@ -2561,8 +2561,9 @@ void Interpreter::Gfxs2dexBgCopy(F3DuObjBg* bg) {
     RawTexMetadata rawTexMetadata = {};
 
     if ((bool)gfx_check_image_signature((char*)data)) {
+		
         std::shared_ptr<Fast::Texture> tex = std::static_pointer_cast<Fast::Texture>(
-            Ship::Context::GetInstance()->GetResourceManager()->LoadResourceProcess((char*)data));
+            Ship::Context::GetInstance()->GetResourceManager()->LoadResourceProcessFast((char*)data + 7));
         texFlags = tex->Flags;
         rawTexMetadata.width = tex->Width;
         rawTexMetadata.height = tex->Height;
@@ -2599,7 +2600,7 @@ void Interpreter::Gfxs2dexBg1cyc(F3DuObjBg* bg) {
 
     if ((bool)gfx_check_image_signature((char*)data)) {
         std::shared_ptr<Fast::Texture> tex = std::static_pointer_cast<Fast::Texture>(
-            Ship::Context::GetInstance()->GetResourceManager()->LoadResourceProcess((char*)data));
+            Ship::Context::GetInstance()->GetResourceManager()->LoadResourceProcessFast((char*)data + 7));
         texFlags = tex->Flags;
         rawTexMetadata.width = tex->Width;
         rawTexMetadata.height = tex->Height;
@@ -3395,7 +3396,7 @@ bool gfx_set_timg_handler_rdp(F3DGfx** cmd0) {
     if ((i & 1) != 1) {
         if (gfx_check_image_signature(imgData) == 1) {
             std::shared_ptr<Fast::Texture> tex = std::static_pointer_cast<Fast::Texture>(
-                Ship::Context::GetInstance()->GetResourceManager()->LoadResourceProcess(imgData));
+                Ship::Context::GetInstance()->GetResourceManager()->LoadResourceProcessFast(imgData + 7));
 
             if (tex == nullptr) {
                 (*cmd0)++;
@@ -4594,7 +4595,8 @@ int32_t gfx_check_image_signature(const char* imgData) {
     }
 
     if (i != 0) {
-        return Ship::Context::GetInstance()->GetResourceManager()->OtrSignatureCheck(imgData);
+		static const char* sOtrSignature = "__OTR__";
+		return strncmp(imgData, sOtrSignature, strlen(sOtrSignature)) == 0;
     }
 
     return 0;

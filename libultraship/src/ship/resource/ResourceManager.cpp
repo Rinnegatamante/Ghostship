@@ -43,6 +43,40 @@ std::shared_ptr<File> ResourceManager::LoadFileProcess(const std::string& filePa
     return file;
 }
 
+std::shared_ptr<IResource> ResourceManager::LoadResourceProcessFast(const char *filePath) {
+	uint64_t hash = XXH3_64bits(filePath, strlen(filePath));
+	
+	// While waiting in the queue, another thread could have loaded the resource.
+    // In a last attempt to avoid doing work that will be discarded, let's check if the cached version exists.
+    auto cachedResource = CheckCache(hash, false);
+    if (cachedResource != nullptr) {
+        return cachedResource;
+    }
+
+    // Get the file from the OTR
+    auto file = LoadFileProcess(filePath);
+    if (file == nullptr) {
+        SPDLOG_TRACE("Failed to load resource file at path {}", filePath);
+        return nullptr;
+    }
+
+    // Transform the raw data into a resource
+    auto resource = GetResourceLoader()->LoadResource(filePath, file, nullptr);
+
+    // Set the cache to the loaded resource
+    if (resource != nullptr) {
+        mResourceCache[hash] = resource;
+    }
+
+    if (resource != nullptr) {
+        SPDLOG_TRACE("Loaded Resource {} on ResourceManager", filePath);
+    } else {
+        SPDLOG_TRACE("Resource load FAILED {} on ResourceManager", filePath);
+    }
+
+    return resource;
+}
+
 std::shared_ptr<IResource> ResourceManager::LoadResourceProcess(const std::string& filePath, bool loadExact,
                                                                 std::shared_ptr<ResourceInitData> initData, uint64_t hash) {
     // Check for and remove the OTR signature
