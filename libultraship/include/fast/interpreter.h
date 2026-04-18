@@ -212,8 +212,8 @@ struct TextureCacheValue {
     std::list<struct TextureCacheMapIter>::iterator lru_location;
 };
 
-typedef robin_hood::unordered_map<TextureCacheKey, struct TextureCacheValue, TextureCacheKey::Hasher> TextureCacheMap;
-typedef robin_hood::pair<const TextureCacheKey, struct TextureCacheValue> TextureCacheNode;
+typedef std::unordered_map<TextureCacheKey, struct TextureCacheValue, TextureCacheKey::Hasher> TextureCacheMap;
+typedef std::pair<const TextureCacheKey, struct TextureCacheValue> TextureCacheNode;
 
 
 struct TextureCacheMapIter {

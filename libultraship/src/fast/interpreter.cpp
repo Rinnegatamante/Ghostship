@@ -484,7 +484,7 @@ bool Interpreter::TextureCacheLookup(int i, const TextureCacheKey& key) {
         texture_id = mRapi->NewTexture();
     }
 
-    it = mTextureCache.map.emplace(key, TextureCacheValue()).first;
+    it = mTextureCache.map.insert(std::make_pair(key, TextureCacheValue())).first;
     TextureCacheNode* node = &*it;
     node->second.texture_id = texture_id;
     node->second.lru_location = mTextureCache.lru.insert(mTextureCache.lru.end(), { it });
@@ -506,15 +506,21 @@ std::string_view Interpreter::GetBaseTexturePath(std::string_view path) {
 #define GetBaseTexturePath(x) (x)
 
 void Interpreter::TextureCacheDelete(const uint8_t* origAddr) {
-    auto it = mTextureCache.map.begin();
-    while (it != mTextureCache.map.end()) {
-        if (it->first.texture_addr == origAddr) {
-            mTextureCache.lru.erase(it->second.lru_location);
-            mTextureCache.free_texture_ids.push_back(it->second.texture_id);
-            
-            it = mTextureCache.map.erase(it);
-        } else {
-            ++it;
+    while (mTextureCache.map.bucket_count() > 0) {
+        TextureCacheKey key = { origAddr, { 0 }, 0, 0, 0 }; // bucket index only depends on the address
+        size_t bucket = mTextureCache.map.bucket(key);
+        bool again = false;
+        for (auto it = mTextureCache.map.begin(bucket); it != mTextureCache.map.end(bucket); ++it) {
+            if (it->first.texture_addr == origAddr) {
+                mTextureCache.lru.erase(it->second.lru_location);
+                mTextureCache.free_texture_ids.push_back(it->second.texture_id);
+                mTextureCache.map.erase(it->first);
+                again = true;
+                break;
+            }
+        }
+        if (!again) {
+            break;
         }
     }
 }
