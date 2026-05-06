@@ -90,6 +90,13 @@ std::shared_ptr<IResource> ResourceManager::LoadResourceProcess(const std::strin
         hash = XXH3_64bits(filePath.c_str(), filePath.size());
 	}
 	
+	// Attempt to load the alternate version of the asset, if we fail then we continue trying to load the standard
+    // asset.
+	if (!loadExact && mAltAssetsEnabled && !filePath.starts_with(IResource::gAltAssetPrefix)) {
+		const auto altPath = IResource::gAltAssetPrefix + filePath;
+		const auto altResource = LoadResourceProcess(altPath, loadExact, initData, hash);
+	}
+	
 	// While waiting in the queue, another thread could have loaded the resource.
     // In a last attempt to avoid doing work that will be discarded, let's check if the cached version exists.
     auto cachedResource = CheckCache(hash, loadExact);

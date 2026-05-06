@@ -326,6 +326,8 @@ static LRESULT CALLBACK gfx_sdl_wnd_proc(HWND h_wnd, UINT message, WPARAM w_para
 void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bool startFullScreen, uint32_t width,
                                 uint32_t height, int32_t posX, int32_t posY) {
 #ifdef __vita__
+    posX = 0;
+    posY = 0;
     width = 960;
     height = 545;
     SDL_setenv("VITA_USE_GLSL_TRANSLATOR", "1", 1);
