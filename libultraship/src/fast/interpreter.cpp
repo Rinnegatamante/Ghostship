@@ -84,7 +84,7 @@ typedef enum {
     VGL_MEM_ALL
 } vglMemType;
 extern "C" {
-void *vglAlloc(uint32_t size, vglMemType type);
+void *vglAllocFromScratch(size_t size);
 void vglFree(void*);
 void vglSetParamBufferSize(uint32_t size);
 uint8_t vglInitWithCustomThreshold(int pool_size, int width, int height, int ram_threshold, int cdram_threshold, int phycont_threshold, int cdlg_threshold, SceGxmMultisampleMode msaa);
@@ -139,7 +139,7 @@ Interpreter::Interpreter() {
 #ifdef __vita__
     vglSetParamBufferSize(6 * 1024 * 1024);
     vglInitWithCustomThreshold(0, 960, 544, 4 * 1024 * 1024, 0, 0, 0, SCE_GXM_MULTISAMPLE_4X);
-    mBufVbo = mBufVboPtr = (float *)vglAlloc(32 * 1024 * 1024, VGL_MEM_RAM);
+    mBufVbo = (float *)vglAllocFromScratch(10 * 1024 * 1024);
 #else
     mBufVbo = new float[MAX_TRI_BUFFER * (32 * 3)];
 #endif
@@ -148,9 +148,7 @@ Interpreter::Interpreter() {
 Interpreter::~Interpreter() {
     delete mRsp;
     delete mRdp;
-#ifdef __vita__
-	vglFree(mBufVboPtr);
-#else
+#ifndef __vita__
     delete[] mBufVbo;
 #endif
 }
@@ -166,9 +164,6 @@ void Interpreter::Flush() {
         mRapi->DrawTriangles(mBufVbo, mBufVboLen, mBufVboNumTris);
 #ifdef __vita__
         mBufVbo += mBufVboLen;
-		if (((uintptr_t)mBufVbo - (uintptr_t)mBufVboPtr) > (32 * 1024 * 1024 - (MAX_TRI_BUFFER * (32 * 3)) * sizeof(float))) {
-			mBufVbo = mBufVboPtr;
-		}
 #endif
         mBufVboLen = 0;
         mBufVboNumTris = 0;
@@ -4474,6 +4469,9 @@ void Interpreter::EndFrame() {
     mWapi->SwapBuffersBegin();
     mRapi->FinishRender();
     mWapi->SwapBuffersEnd();
+#ifdef __vita__
+	mBufVbo = (float*)vglAllocFromScratch(10 * 1024 * 1024);
+#endif
 }
 
 void gfx_set_target_ucode(UcodeHandlers ucode) {
