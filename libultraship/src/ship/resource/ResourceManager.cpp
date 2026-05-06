@@ -95,6 +95,9 @@ std::shared_ptr<IResource> ResourceManager::LoadResourceProcess(const std::strin
 	if (!loadExact && mAltAssetsEnabled && !filePath.starts_with(IResource::gAltAssetPrefix)) {
 		const auto altPath = IResource::gAltAssetPrefix + filePath;
 		const auto altResource = LoadResourceProcess(altPath, loadExact, initData, hash);
+		if (altResource != nullptr) {
+            return altResource;
+		}
 	}
 	
 	// While waiting in the queue, another thread could have loaded the resource.
