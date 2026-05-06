@@ -9,11 +9,6 @@
 namespace Fast {
 struct ShaderProgram;
 
-struct GfxClipParameters {
-    bool z_is_from_0_to_1;
-    bool invertY;
-};
-
 enum FilteringMode { FILTER_THREE_POINT, FILTER_LINEAR, FILTER_NONE };
 
 // A hash function used to hash a: pair<float, float>
@@ -32,7 +27,7 @@ class GfxRenderingAPI {
     virtual ~GfxRenderingAPI() = default;
     virtual const char* GetName() = 0;
     virtual int GetMaxTextureSize() = 0;
-    virtual GfxClipParameters GetClipParameters() = 0;
+    virtual bool GetClipParameters() = 0;
     virtual void UnloadShader(ShaderProgram* oldPrg) = 0;
     virtual void LoadShader(ShaderProgram* newPrg) = 0;
     virtual ShaderProgram* CreateAndLoadNewShader(uint64_t shaderId0, uint32_t shaderId1) = 0;

@@ -54,7 +54,7 @@ class GfxRenderingAPIOGL final : public GfxRenderingAPI {
     ~GfxRenderingAPIOGL() override = default;
     const char* GetName() override;
     int GetMaxTextureSize() override;
-    GfxClipParameters GetClipParameters() override;
+    bool GetClipParameters() override;
     void UnloadShader(ShaderProgram* oldPrg) override;
     void LoadShader(ShaderProgram* newPrg) override;
     ShaderProgram* CreateAndLoadNewShader(uint64_t shaderId0, uint32_t shaderId1) override;
