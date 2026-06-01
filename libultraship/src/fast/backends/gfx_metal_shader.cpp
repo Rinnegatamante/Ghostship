@@ -224,6 +224,7 @@ MTL::VertexDescriptor* gfx_metal_build_shader(std::string& result, size_t& numFl
         { "SHADER_1", SHADER_1 },
         { "SHADER_COMBINED", SHADER_COMBINED },
         { "SHADER_NOISE", SHADER_NOISE },
+        { "FILTER_THREE_POINT", Fast::FILTER_THREE_POINT },
         { "o_c", M_ARRAY(cc_features.c, int, 2, 2, 4) },
         { "o_alpha", cc_features.opt_alpha },
         { "o_fog", cc_features.opt_fog },
@@ -233,6 +234,7 @@ MTL::VertexDescriptor* gfx_metal_build_shader(std::string& result, size_t& numFl
         { "o_alpha_threshold", cc_features.opt_alpha_threshold },
         { "o_invisible", cc_features.opt_invisible },
         { "o_grayscale", cc_features.opt_grayscale },
+        { "o_prim_depth", cc_features.opt_prim_depth },
         { "o_textures", M_ARRAY(cc_features.usedTextures, bool, 2) },
         { "o_masks", M_ARRAY(cc_features.used_masks, bool, 2) },
         { "o_blend", M_ARRAY(cc_features.used_blend, bool, 2) },
@@ -252,8 +254,15 @@ MTL::VertexDescriptor* gfx_metal_build_shader(std::string& result, size_t& numFl
     init->Type = (uint32_t)Ship::ResourceType::Shader;
     init->ByteOrder = Ship::Endianness::Native;
     init->Format = RESOURCE_FORMAT_BINARY;
-    auto res = static_pointer_cast<Ship::Shader>(Ship::Context::GetInstance()->GetResourceManager()->LoadResource(
-        "shaders/metal/default.shader.metal", true, init));
+    const char* shaderName = Fast::gfx_get_shader(cc_features.shader_id);
+    std::string path = "shaders/metal/default.shader.metal";
+
+    if (nullptr != shaderName) {
+        path = std::string(shaderName) + ".metal";
+    }
+
+    auto res = static_pointer_cast<Ship::Shader>(
+        Ship::Context::GetInstance()->GetResourceManager()->LoadResource(path, true, init));
 
     if (res == nullptr) {
         SPDLOG_ERROR("Failed to load default metal shader, missing f3d.o2r?");

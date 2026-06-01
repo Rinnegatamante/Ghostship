@@ -27,6 +27,11 @@ struct PerDrawCB {
     } mTextures[SHADER_MAX_TEXTURES];
 };
 
+struct PerPrimDepthCB {
+    float prim_depth;
+    float _pad[3]; // 16-byte CB alignment
+};
+
 struct Coord {
     int x, y;
 };
@@ -56,7 +61,7 @@ struct ShaderProgramD3D11 {
     Microsoft::WRL::ComPtr<ID3D11BlendState> blend_state;
 
     uint64_t shader_id0;
-    uint32_t shader_id1;
+    uint64_t shader_id1;
     uint8_t numInputs;
     uint8_t numFloats;
     bool usedTextures[SHADER_MAX_TEXTURES];
@@ -74,14 +79,16 @@ class GfxRenderingAPIDX11 final : public GfxRenderingAPI {
     GfxClipParameters GetClipParameters() override;
     void UnloadShader(struct ShaderProgram* oldPrg) override;
     void LoadShader(struct ShaderProgram* newPrg) override;
-    struct ShaderProgram* CreateAndLoadNewShader(uint64_t shaderId0, uint32_t shaderId1) override;
-    struct ShaderProgram* LookupShader(uint64_t shaderId0, uint32_t shaderId1) override;
+    struct ShaderProgram* CreateAndLoadNewShader(uint64_t shaderId0, uint64_t shaderId1) override;
+    struct ShaderProgram* LookupShader(uint64_t shaderId0, uint64_t shaderId1) override;
     void ShaderGetInfo(struct ShaderProgram* prg, uint8_t* numInputs, bool usedTextures[2]) override;
+    void ClearShaderCache() override;
     uint32_t NewTexture() override;
     void SelectTexture(int tile, uint32_t textureId) override;
     void UploadTexture(const uint8_t* rgba32Buf, uint32_t width, uint32_t height) override;
     void SetSamplerParameters(int sampler, bool linear_filter, uint32_t cms, uint32_t cmt) override;
     void SetDepthTestAndMask(bool depth_test, bool z_upd) override;
+    void SetCurrentPrimDepth(float depth) override;
     void SetZmodeDecal(bool decal) override;
     void SetViewport(int x, int y, int width, int height) override;
     void SetScissor(int x, int y, int width, int height) override;
@@ -134,6 +141,7 @@ class GfxRenderingAPIDX11 final : public GfxRenderingAPI {
     Microsoft::WRL::ComPtr<ID3D11Buffer> mVertexBuffer;
     Microsoft::WRL::ComPtr<ID3D11Buffer> mPerFrameCb;
     Microsoft::WRL::ComPtr<ID3D11Buffer> mPerDrawCb;
+    Microsoft::WRL::ComPtr<ID3D11Buffer> mPerPrimDepthCb;
     Microsoft::WRL::ComPtr<ID3D11Buffer> mCoordBuffer;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> mCoordBufferSrv;
     Microsoft::WRL::ComPtr<ID3D11Buffer> mDepthValueOutputBuffer;
@@ -150,12 +158,13 @@ class GfxRenderingAPIDX11 final : public GfxRenderingAPI {
 
     PerFrameCB mPerFrameCbData;
     PerDrawCB mPerDrawCbData;
+    PerPrimDepthCB mPerPrimDepthCbData;
 
     std::map<std::pair<uint64_t, uint32_t>, struct ShaderProgramD3D11> mShaderProgramPool;
 
     std::vector<struct TextureData> mTextures;
     int mCurrentTile;
-    uint32_t mCurrentTextureIds[SHADER_MAX_TEXTURES];
+    uint32_t mCurrentTextureIds[SHADER_MAX_TEXTURES] = {};
 
     std::vector<FramebufferDX11> mFrameBuffers;
 
@@ -163,8 +172,7 @@ class GfxRenderingAPIDX11 final : public GfxRenderingAPI {
 
     struct ShaderProgramD3D11* mShaderProgram;
 
-    // uint32_t current_width, current_height;
-    uint32_t mRenderTargetHeight;
+    int32_t mRenderTargetHeight;
     int mCurrentFramebuffer;
     FilteringMode mCurrentFilterMode = FILTER_NONE;
 
@@ -177,6 +185,11 @@ class GfxRenderingAPIDX11 final : public GfxRenderingAPI {
     Microsoft::WRL::ComPtr<ID3D11SamplerState> mLastSamplerStates[SHADER_MAX_TEXTURES] = { nullptr, nullptr };
 
     D3D_PRIMITIVE_TOPOLOGY mLastPrimitaveTopology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
+
+    // Cached staging texture for ReadFramebufferToCPU — avoids CreateTexture2D/Release per frame
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> mReadbackStaging;
+    uint32_t mReadbackStagingW = 0;
+    uint32_t mReadbackStagingH = 0;
 };
 
 std::string gfx_direct3d_common_build_shader(size_t& numFloats, const CCFeatures& cc_features,

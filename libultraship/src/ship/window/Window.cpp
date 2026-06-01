@@ -12,10 +12,14 @@
 
 namespace Ship {
 
-Window::Window(std::shared_ptr<Gui> gui) {
+Window::Window(std::shared_ptr<Gui> gui, std::shared_ptr<MouseStateManager> mouseStateManager) {
     mGui = gui;
-    mAvailableWindowBackends = std::make_shared<std::vector<WindowBackend>>();
+    mMouseStateManager = mouseStateManager;
+    mAvailableWindowBackends = std::make_shared<std::vector<int32_t>>();
     mConfig = Context::GetInstance()->GetConfig();
+}
+
+Window::Window(std::shared_ptr<Gui> gui) : Window(gui, std::make_shared<MouseStateManager>()) {
 }
 
 Window::Window(std::vector<std::shared_ptr<GuiWindow>> guiWindows) : Window(std::make_shared<Gui>(guiWindows)) {
@@ -63,40 +67,37 @@ void Window::SaveWindowToConfig() {
     }
 }
 
-WindowBackend Window::GetWindowBackend() {
+int32_t Window::GetWindowBackend() {
     return mWindowBackend;
 }
 
-std::shared_ptr<std::vector<WindowBackend>> Window::GetAvailableWindowBackends() {
+std::shared_ptr<std::vector<int32_t>> Window::GetAvailableWindowBackends() {
     return mAvailableWindowBackends;
 }
 
 bool Window::IsAvailableWindowBackend(int32_t backendId) {
-    // Verify the id is a valid backend enum value
-    if (backendId < 0 || backendId >= static_cast<int>(WindowBackend::WINDOW_BACKEND_COUNT)) {
+    if (backendId < 0) {
         return false;
     }
 
-    // Verify the backend is available
-    auto backend = static_cast<WindowBackend>(backendId);
-    return std::find(mAvailableWindowBackends->begin(), mAvailableWindowBackends->end(), backend) !=
+    return std::find(mAvailableWindowBackends->begin(), mAvailableWindowBackends->end(), backendId) !=
            mAvailableWindowBackends->end();
 }
 
 bool Window::ShouldAutoCaptureMouse() {
-    return mAutoCaptureMouse;
+    return mMouseStateManager->ShouldAutoCaptureMouse();
 }
 
 void Window::SetAutoCaptureMouse(bool capture) {
-    mAutoCaptureMouse = capture;
+    mMouseStateManager->SetAutoCaptureMouse(capture);
 }
 
 bool Window::ShouldForceCursorVisibility() {
-    return mForceCursorVisibility;
+    return mMouseStateManager->ShouldForceCursorVisibility();
 }
 
 void Window::SetForceCursorVisibility(bool visible) {
-    mForceCursorVisibility = visible;
+    mMouseStateManager->SetForceCursorVisibility(visible);
 }
 
 int32_t Window::GetFullscreenScancode() {
@@ -115,13 +116,38 @@ void Window::SetMouseCaptureScancode(int32_t scancode) {
     mMouseCaptureScancode = scancode;
 }
 
-void Window::SetWindowBackend(WindowBackend backend) {
-    mWindowBackend = backend;
-    Context::GetInstance()->GetConfig()->SetWindowBackend(GetWindowBackend());
-    Context::GetInstance()->GetConfig()->Save();
+std::shared_ptr<MouseStateManager> Window::GetMouseStateManager() {
+    return mMouseStateManager;
 }
 
-void Window::AddAvailableWindowBackend(WindowBackend backend) {
+void Window::SetWindowBackend(int32_t backend) {
+    mWindowBackend = backend;
+    mConfig->SetInt("Window.Backend.Id", GetWindowBackend());
+    mConfig->SetString("Window.Backend.Name", GetWindowBackendName());
+    mConfig->Save();
+}
+
+void Window::AddAvailableWindowBackend(int32_t backend) {
     mAvailableWindowBackends->push_back(backend);
+}
+
+int32_t Window::GetSavedWindowBackend() {
+    auto backendId = mConfig->GetInt("Window.Backend.Id", -1);
+    if (IsAvailableWindowBackend(backendId)) {
+        return backendId;
+    }
+
+    SPDLOG_TRACE(
+        "Could not find available WindowBackend matching id from config file ({}). Returning default WindowBackend.",
+        backendId);
+
+    if (mAvailableWindowBackends && !mAvailableWindowBackends->empty()) {
+        return mAvailableWindowBackends->front();
+    }
+    return -1;
+}
+
+std::string Window::GetWindowBackendName() {
+    return "";
 }
 } // namespace Ship

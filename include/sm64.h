@@ -6,13 +6,12 @@
 #include <PR/gu.h>
 #include <PR/ucode.h>
 #include "port/Engine.h"
+#include "port/events/Events.h"
 #include <libultra/os.h>
+#include "variables.h"
 
 // Global header for Super Mario 64
-#ifdef __cplusplus
-extern "C" {
-#endif
-#include "config.h"
+#include "sm64_config.h"
 #include "object_fields.h"
 #include "object_constants.h"
 #include "sounds.h"
@@ -22,14 +21,11 @@ extern "C" {
 #include "surface_terrains.h"
 #include "macros.h"
 #include "align_asset_macro.h"
-#ifdef __cplusplus
-}
-#endif
 
 #define GAME_VERSION GameEngine_GetGameVersion()
 #define ROM_JP (GAME_VERSION == 0xE3DAA4E)
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__SWITCH__)
 #define bzero(b,len) (memset((b), '\0', (len)), (void) 0)
 #define bcopy(b1, b2, len) (memmove((b2), (b1), (len)), (void) 0)
 #endif
@@ -511,12 +507,12 @@ extern void osMapTLB(int32_t a, uint32_t b, void* c, uint32_t d, uint32_t e, uin
 extern "C" {
 #endif
 
-void ResourceMgr_PatchGfxByName(const char* path, const char* patchName, GfxPatch* patches, int patchCount);
-void gSPSegmentLoadRes(void* value, int segNum, uintptr_t target);
-void gSPDisplayList(Gfx* pkt, Gfx* dl);
-void gSPDisplayListOffset(Gfx* pkt, Gfx* dl, int offset);
-void gSPVertex(Gfx* pkt, uintptr_t v, int n, int v0);
-void gSPInvalidateTexCache(Gfx* pkt, uintptr_t texAddr);
+extern_s void ResourceMgr_PatchGfxByName(const char* path, const char* patchName, GfxPatch* patches, int patchCount);
+extern_s void gSPSegmentLoadRes(void* value, int segNum, uintptr_t target);
+extern_s void gSPDisplayList(Gfx* pkt, Gfx* dl);
+extern_s void gSPDisplayListOffset(Gfx* pkt, Gfx* dl, int offset);
+extern_s void gSPVertex(Gfx* pkt, uintptr_t v, int n, int v0);
+extern_s void gSPInvalidateTexCache(Gfx* pkt, uintptr_t texAddr);
 
 #ifdef __cplusplus
 }

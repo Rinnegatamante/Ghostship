@@ -39,6 +39,7 @@ struct SpawnInfo {
     /*0x14*/ void *behaviorScript;
     /*0x18*/ struct GraphNode *model;
     /*0x1C*/ struct SpawnInfo *next;
+    /*0x20*/ u32 modelId;
 };
 
 struct UnusedArea28 {
@@ -127,48 +128,40 @@ enum MenuOption {
     MENU_OPT_CONTINUE_DONT_SAVE = MENU_OPT_3
 };
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+extern_s struct GraphNode **gLoadedGraphNodes;
+extern_s struct SpawnInfo gPlayerSpawnInfos[];
+extern_s struct GraphNode *D_8033A160[];
+extern_s struct Area gAreaData[];
+extern_s struct WarpTransition gWarpTransition;
+extern_s s16 gCurrCourseNum;
+extern_s s16 gCurrActNum;
+extern_s s16 gCurrAreaIndex;
+extern_s s16 gSavedCourseNum;
+extern_s s16 gMenuOptSelectIndex;
+extern_s s16 gSaveOptSelectIndex;
 
-extern struct GraphNode **gLoadedGraphNodes;
-extern struct SpawnInfo gPlayerSpawnInfos[];
-extern struct GraphNode *D_8033A160[];
-extern struct Area gAreaData[];
-extern struct WarpTransition gWarpTransition;
-extern s16 gCurrCourseNum;
-extern s16 gCurrActNum;
-extern s16 gCurrAreaIndex;
-extern s16 gSavedCourseNum;
-extern s16 gMenuOptSelectIndex;
-extern s16 gSaveOptSelectIndex;
+extern_s struct SpawnInfo *gMarioSpawnInfo;
 
-extern struct SpawnInfo *gMarioSpawnInfo;
+extern_s struct Area *gAreas;
+extern_s struct Area *gCurrentArea;
 
-extern struct Area *gAreas;
-extern struct Area *gCurrentArea;
+extern_s s16 gCurrSaveFileNum;
+extern_s s16 gCurrLevelNum;
 
-extern s16 gCurrSaveFileNum;
-extern s16 gCurrLevelNum;
-
-void override_viewport_and_clip(Vp *a, Vp *b, u8 c, u8 d, u8 e);
-void print_intro_text(void);
-u32 get_mario_spawn_type(struct Object *o);
-struct ObjectWarpNode *area_get_warp_node(u8 id);
-void clear_areas(void);
-void clear_area_graph_nodes(void);
-void load_area(s32 index);
-void unload_area(void);
-void load_mario_area(void);
-void unload_mario_area(void);
-void change_area(s32 index);
-void area_update_objects(void);
-void play_transition(s16 transType, s16 time, u8 red, u8 green, u8 blue);
-void play_transition_after_delay(s16 transType, s16 time, u8 red, u8 green, u8 blue, s16 delay);
-void render_game(void);
-
-#ifdef __cplusplus
-}
-#endif
+extern_s void override_viewport_and_clip(Vp *a, Vp *b, u8 c, u8 d, u8 e);
+extern_s void print_intro_text(void);
+extern_s u32 get_mario_spawn_type(struct Object *o);
+extern_s struct ObjectWarpNode *area_get_warp_node(u8 id);
+extern_s void clear_areas(void);
+extern_s void clear_area_graph_nodes(void);
+extern_s void load_area(s32 index);
+extern_s void unload_area(void);
+extern_s void load_mario_area(void);
+extern_s void unload_mario_area(void);
+extern_s void change_area(s32 index);
+extern_s void area_update_objects(void);
+extern_s void play_transition(s16 transType, s16 time, u8 red, u8 green, u8 blue);
+extern_s void play_transition_after_delay(s16 transType, s16 time, u8 red, u8 green, u8 blue, s16 delay);
+extern_s void render_game(void);
 
 #endif // AREA_H

@@ -3,11 +3,11 @@
 
 #include <libultra/types.h>
 
-#include "config.h"
+#include "sm64_config.h"
 
 #if ENABLE_RUMBLE
 
-extern s32 gRumblePakTimer;
+extern_s s32 gRumblePakTimer;
 
 void init_rumble_pak_scheduler_queue(void);
 void block_until_rumble_pak_free(void);

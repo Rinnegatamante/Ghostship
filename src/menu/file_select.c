@@ -27,6 +27,10 @@
 #define LANGUAGE_FUNCTION sLanguageMode
 #endif
 
+#include "port/events/list/PlayerEvent.h"
+#include "port/mods/PortEnhancements.h"
+extern struct SaveBuffer gSaveBuffer;
+
 /**
  * @file file_select.c
  * This file implements how the file select and it's menus render and function.
@@ -154,6 +158,8 @@ static s8 sOpenLangSettings = FALSE;
 //static unsigned char textNew[] = { TEXT_NEW };
 static unsigned char starIcon[] = { GLYPH_STAR, GLYPH_SPACE };
 static unsigned char xIcon[] = { GLYPH_MULTIPLY, GLYPH_SPACE };
+// "SURROUND" text for sound mode menu (S=0x1C, U=0x1E, R=0x1B, O=0x18, N=0x17, D=0x0D)
+static unsigned char textSurround[] = { 0x1C, 0x1E, 0x1B, 0x1B, 0x18, 0x1E, 0x17, 0x0D, 0xFF };
 //#endif
 //
 //#ifndef VERSION_EU
@@ -1036,16 +1042,20 @@ void check_erase_menu_clicked_buttons(struct Object *eraseButton) {
 void render_sound_mode_menu_buttons(struct Object *soundModeButton) {
     // Stereo option button
     sMainMenuButtons[MENU_BUTTON_STEREO] = spawn_object_rel_with_rot(
-        soundModeButton, MODEL_MAIN_MENU_GENERIC_BUTTON, bhvMenuButton, 533, SOUND_BUTTON_Y, -100, 0, -0x8000, 0);
+        soundModeButton, MODEL_MAIN_MENU_GENERIC_BUTTON, bhvMenuButton, 600, SOUND_BUTTON_Y, -100, 0, -0x8000, 0);
     sMainMenuButtons[MENU_BUTTON_STEREO]->oMenuButtonScale = 0.11111111f;
     // Mono option button
     sMainMenuButtons[MENU_BUTTON_MONO] = spawn_object_rel_with_rot(
-        soundModeButton, MODEL_MAIN_MENU_GENERIC_BUTTON, bhvMenuButton, 0, SOUND_BUTTON_Y, -100, 0, -0x8000, 0);
+        soundModeButton, MODEL_MAIN_MENU_GENERIC_BUTTON, bhvMenuButton, 200, SOUND_BUTTON_Y, -100, 0, -0x8000, 0);
     sMainMenuButtons[MENU_BUTTON_MONO]->oMenuButtonScale = 0.11111111f;
     // Headset option button
     sMainMenuButtons[MENU_BUTTON_HEADSET] = spawn_object_rel_with_rot(
-        soundModeButton, MODEL_MAIN_MENU_GENERIC_BUTTON, bhvMenuButton, -533, SOUND_BUTTON_Y, -100, 0, -0x8000, 0);
+        soundModeButton, MODEL_MAIN_MENU_GENERIC_BUTTON, bhvMenuButton, -200, SOUND_BUTTON_Y, -100, 0, -0x8000, 0);
     sMainMenuButtons[MENU_BUTTON_HEADSET]->oMenuButtonScale = 0.11111111f;
+    // Surround option button
+    sMainMenuButtons[MENU_BUTTON_SURROUND] = spawn_object_rel_with_rot(
+        soundModeButton, MODEL_MAIN_MENU_GENERIC_BUTTON, bhvMenuButton, -600, SOUND_BUTTON_Y, -100, 0, -0x8000, 0);
+    sMainMenuButtons[MENU_BUTTON_SURROUND]->oMenuButtonScale = 0.11111111f;
 
 #ifdef VERSION_EU
     // English option button
@@ -1088,7 +1098,7 @@ void check_sound_mode_menu_clicked_buttons(struct Object *soundModeButton) {
                 // If sound mode button clicked, select it and define sound mode
                 // The check will always be true because of the group configured above (In JP & US)
                 if (buttonID == MENU_BUTTON_STEREO || buttonID == MENU_BUTTON_MONO
-                    || buttonID == MENU_BUTTON_HEADSET) {
+                    || buttonID == MENU_BUTTON_HEADSET || buttonID == MENU_BUTTON_SURROUND) {
                     if (soundModeButton->oMenuButtonActionPhase == SOUND_MODE_PHASE_MAIN) {
                         play_sound(SOUND_MENU_CLICK_FILE_SELECT, gGlobalSoundSource);
 #if ENABLE_RUMBLE
@@ -1138,6 +1148,7 @@ void load_main_menu_save_file(struct Object *fileButton, s32 fileNum) {
     if (fileButton->oMenuButtonState == MENU_BUTTON_STATE_FULLSCREEN) {
         sSelectedFileNum = fileNum;
     }
+    CALL_EVENT(OnGameFileLoad, fileNum);
 }
 
 /**
@@ -1593,6 +1604,9 @@ void bhv_menu_button_manager_loop(void) {
         case MENU_BUTTON_HEADSET:
             return_to_main_menu(MENU_BUTTON_SOUND_MODE, sMainMenuButtons[MENU_BUTTON_HEADSET]);
             break;
+        case MENU_BUTTON_SURROUND:
+            return_to_main_menu(MENU_BUTTON_SOUND_MODE, sMainMenuButtons[MENU_BUTTON_SURROUND]);
+            break;
 #endif
     }
 
@@ -1762,8 +1776,14 @@ void print_save_file_star_count(s8 fileIndex, s16 x, s16 y) {
         int_to_str(starCount, starCountText);
         print_hud_lut_string(HUD_LUT_GLOBAL, x + offset + 16, y, starCountText);
     } else {
-        // Print "new" text
-        print_hud_lut_string(HUD_LUT_GLOBAL, x, y, GameEngine_LoadTranslation("TEXT_NEW"));
+        ShipSaveFeatures features = gSaveBuffer.files[fileIndex][0].shipSaveData.features;
+
+        if (features.rando) {
+            // Print "rando + achievements" text
+            print_hud_lut_string(HUD_LUT_GLOBAL, x, y, textRand);
+        } else {
+            print_hud_lut_string(HUD_LUT_GLOBAL, x, y, GameEngine_LoadTranslation("TEXT_NEW"));
+        }
     }
 }
 
@@ -1818,7 +1838,8 @@ void print_main_menu_strings(void) {
     unsigned char* textSoundModes[] = {
         GameEngine_LoadTranslation("TEXT_STEREO"),
         GameEngine_LoadTranslation("TEXT_MONO"),
-        GameEngine_LoadTranslation("TEXT_HEADSET")
+        GameEngine_LoadTranslation("TEXT_HEADSET"),
+        textSurround
     };
     sSoundTextX = get_str_x_pos_from_center(254, textSoundModes[sSoundMode], 10.0f);
     print_generic_string(SOUNDMODE_X1, 39, textSoundModes[sSoundMode]);
@@ -1827,10 +1848,22 @@ void print_main_menu_strings(void) {
     // Print file names
     gSPDisplayList(gDisplayListHead++, dl_menu_ia8_text_begin);
     gDPSetEnvColor(gDisplayListHead++, 255, 255, 255, sTextBaseAlpha);
-    print_menu_generic_string(MARIOTEXT_X1, 65, GameEngine_LoadTranslation("TEXT_FILE_MARIO_A"));
-    print_menu_generic_string(MARIOTEXT_X2, 65, GameEngine_LoadTranslation("TEXT_FILE_MARIO_B"));
-    print_menu_generic_string(MARIOTEXT_X1, 105, GameEngine_LoadTranslation("TEXT_FILE_MARIO_C"));
-    print_menu_generic_string(MARIOTEXT_X2, 105, GameEngine_LoadTranslation("TEXT_FILE_MARIO_D"));
+    print_menu_generic_string(MARIOTEXT_X1, 65,
+                              gSaveBuffer.files[SAVE_FILE_A][0].shipSaveData.features.rando
+                                  ? textMarioRando
+                                  : GameEngine_LoadTranslation("TEXT_FILE_MARIO_A"));
+    print_menu_generic_string(MARIOTEXT_X2, 65,
+                              gSaveBuffer.files[SAVE_FILE_B][0].shipSaveData.features.rando
+                                  ? textMarioRando
+                                  : GameEngine_LoadTranslation("TEXT_FILE_MARIO_B"));
+    print_menu_generic_string(MARIOTEXT_X1, 105,
+                              gSaveBuffer.files[SAVE_FILE_C][0].shipSaveData.features.rando
+                                  ? textMarioRando
+                                  : GameEngine_LoadTranslation("TEXT_FILE_MARIO_C"));
+    print_menu_generic_string(MARIOTEXT_X2, 105,
+                              gSaveBuffer.files[SAVE_FILE_D][0].shipSaveData.features.rando
+                                  ? textMarioRando
+                                  : GameEngine_LoadTranslation("TEXT_FILE_MARIO_D"));
     gSPDisplayList(gDisplayListHead++, dl_menu_ia8_text_end);
 }
 
@@ -2463,17 +2496,18 @@ void print_sound_mode_menu_strings(void) {
     unsigned char* textSoundModes[] = {
         GameEngine_LoadTranslation("TEXT_STEREO"),
         GameEngine_LoadTranslation("TEXT_MONO"),
-        GameEngine_LoadTranslation("TEXT_HEADSET")
+        GameEngine_LoadTranslation("TEXT_HEADSET"),
+        textSurround
     };
     // Print sound mode names
-    for (mode = 0; mode < 3; mode++) {
+    for (mode = 0; mode < 4; mode++) {
         if (mode == sSoundMode) {
             gDPSetEnvColor(gDisplayListHead++, 255, 255, 255, sTextBaseAlpha);
         } else {
             gDPSetEnvColor(gDisplayListHead++, 0, 0, 0, sTextBaseAlpha);
         }
-        // Mode names are centered correctly on US and Shindou
-        textX = get_str_x_pos_from_center(mode * 74 + 87, textSoundModes[mode], 10.0f);
+        // Mode names centered for 4 sound options (mapped to button positions 600, 200, -200, -600)
+        textX = get_str_x_pos_from_center(mode * 55 + 77, textSoundModes[mode], 10.0f);
         print_generic_string(textX, 87, textSoundModes[mode]);
     }
 #endif

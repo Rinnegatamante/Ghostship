@@ -24,15 +24,17 @@ LUS_SOURCES := libultraship/src/fast libultraship/src/fast/resource/type libultr
 	libultraship/src/ship/controller/physicaldevice libultraship/src/ship/debug libultraship/src/ship/resource libultraship/src/ship/resource/archive \
 	libultraship/src/ship/utils/binarytools libultraship/src/ship/window/gui libultraship/src/ship/window/gui/resource libultraship/src/libultraship/window/gui \
 	libultraship/src/libultraship/log libultraship/src/libultraship/libultra libultraship/src/libultraship/controller/controldeck libultraship/src/libultraship/bridge \
-	libultraship/src/libultraship/controller/controldevice/controller libultraship/src/libultraship/controller/controldevice/controller/mapping libultraship/imgui
+	libultraship/src/libultraship/controller/controldevice/controller libultraship/src/libultraship/controller/controldevice/controller/mapping libultraship/imgui \
+	libultraship/src/ship/events
 
-GAME_SOURCES := src/audio src/buffers src/engine src/game src/goddard src/menu src/pc sound actors bin data levels src/port src/port/Enhacnements \
-	src/port/Enhancements/game-interactor src/port/importer text textures levels/bbh levels/bitdw levels/bitfs levels/bits \
-	levels/bob levels/bowser_1 levels/bowser_2 levels/bowser_3 levels/castle_courtyard levels/castle_grounds levels/castle_inside \
-	levels/ccm levels/cotmc levels/ddd levels/ending levels/hmc levels/intro levels/jrb levels/lll levels/menu levels/pss \
-	levels/rr levels/sa levels/sl levels/ssl levels/thi levels/totwc levels/ttc levels/ttm levels/vcutm levels/wdw levels/wf levels/wmotr \
-	src/goddard/dynlists src/port/interpolation src/port/hooks/impl src/port/console src/port/mods src/port/importer/types \
-	src/port/mods/utils src/port/ui src/port/game
+GAME_SOURCES := src/audio src/buffers src/engine src/game src/goddard src/menu src/pc sound actors bin data levels src/port src/port/Enhacnements src/port/importer \
+	src/port/Enhancements/game-interactor text textures levels/bbh levels/bitdw levels/bitfs levels/bits levels/castle_inside levels/castle_grounds levels/bob \
+	levels/bowser_1 levels/bowser_2 levels/bowser_3 levels/castle_courtyard levels/wmotr levels/jrb levels/intro levels/lll levels/menu levels/pss levels/hmc \
+	levels/ccm levels/cotmc levels/ddd levels/ending levels/sa levels/sl levels/ssl levels/thi levels/totwc levels/ttc levels/ttm levels/vcutm levels/wdw levels/wf \
+	levels/rr src/goddard/dynlists src/port/interpolation src/port/hooks/impl src/port/console src/port/mods src/port/importer/types src/port/mods/utils \
+	src/port/ui src/port/game src/port/mods/achievements src/port/Rando src/port/data src/port/Rando/CheckTracker src/port/Rando/ObjectBehavior src/port/Rando/Spoiler \
+	src/port/Rando/CustomItem src/port/Rando/EntranceTracker src/port/Rando/Logic src/port/Rando/MiscBehavior src/port/Rando/StaticData src/port/mods/mirror \
+	src/port/api src/port/Rando/Logic/Regions src/port/util src/port/permissions
 
 SOURCES := $(LUS_SOURCES) $(TORCH_SOURCES) $(GAME_SOURCES)
 
@@ -40,7 +42,7 @@ INCLUDES := $(LUS_INCLUDES) $(TORCH_INCLUDES) \
 	actors levels include include/PR spdlog/include include/assets include/assets/actors \
 	include/assets/assets include/assets/bin include/assets/levels include/assets/textures \
 	src/audio src/buffers src/engine src/game src/goddard src/menu src/pc src/port src/port/Enhancements \
-	src/port/enhancements/game-interactor textures src .
+	src/port/enhancements/game-interactor src/port/api textures src .
 
 LIBS = -lstorm -lgfxd -lzip -lbzip2 -lzstd -lz -lyaml-cpp -llzma -lssl -lcrypto -lstdc++ -lpng \
 	-Wl,--whole-archive -lpthread -Wl,--no-whole-archive \
@@ -137,7 +139,9 @@ CFLAGS = -g -Wl,-q,--allow-multiple-definition -O3 -ffast-math -fno-short-enums 
 	-DCVAR_MENU_BAR_OPEN=\"gOpenMenuBar\" \
 	-DCVAR_PREFIX_CONTROLLERS=\"gControllers\" \
 	-DCVAR_PREFIX_ADVANCED_RESOLUTION=\"gAdvancedResolution\" \
-	-DCVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"
+	-DCVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\" \
+	-DCVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\" \
+	-DCVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"
 
 CXXFLAGS = $(CFLAGS) -fexceptions -std=gnu++20 -fpermissive
 ASFLAGS  = $(CFLAGS)

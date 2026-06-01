@@ -91,6 +91,7 @@ void king_bobomb_act_2(void) {
     if (mario_is_far_below_object(1200.0f)) {
         o->oAction = 0;
         stop_background_music(SEQUENCE_ARGS(4, SEQ_EVENT_BOSS));
+        CALL_EVENT(BossBattleEnded);
     }
 }
 
@@ -157,6 +158,7 @@ void king_bobomb_act_1(void) {
     if (mario_is_far_below_object(1200.0f)) {
         o->oAction = 0;
         stop_background_music(SEQUENCE_ARGS(4, SEQ_EVENT_BOSS));
+        CALL_EVENT(BossBattleEnded);
     }
 }
 
@@ -202,29 +204,32 @@ void king_bobomb_act_7(void) {
     cur_obj_init_animation_with_sound(2);
     if (cur_obj_update_dialog_with_cutscene(MARIO_DIALOG_LOOK_UP,
         DIALOG_FLAG_TEXT_DEFAULT, CUTSCENE_DIALOG, DIALOG_116)) {
-        create_sound_spawner(SOUND_OBJ_KING_WHOMP_DEATH);
+        CALL_CANCELLABLE_EVENT(BossDefeated, o, BOSS_TYPE_KING_BOBOMB) {
+            create_sound_spawner(SOUND_OBJ_KING_WHOMP_DEATH);
 
-        cur_obj_hide();
-        cur_obj_become_intangible();
+            cur_obj_hide();
+            cur_obj_become_intangible();
 
-        spawn_mist_particles_variable(0, 0, 200.0f);
-        spawn_triangle_break_particles(20, MODEL_DIRT_ANIMATION, 3.0f, 4);
-        cur_obj_shake_screen(SHAKE_POS_SMALL);
+            spawn_mist_particles_variable(0, 0, 200.0f);
+            spawn_triangle_break_particles(20, MODEL_DIRT_ANIMATION, 3.0f, 4);
+            cur_obj_shake_screen(SHAKE_POS_SMALL);
 
-        if(ROM_JP) {
-            o->oPosY += 100.0f;
-            spawn_default_star(2000.0f, 4500.0f, -4500.0f);
-        } else {
-            cur_obj_spawn_star_at_y_offset(2000.0f, 4500.0f, -4500.0f, 200.0f);
-        }
+            if(ROM_JP) {
+                o->oPosY += 100.0f;
+                spawn_default_star(2000.0f, 4500.0f, -4500.0f);
+            } else {
+                cur_obj_spawn_star_at_y_offset(2000.0f, 4500.0f, -4500.0f, 200.0f);
+            }
 
-        o->oAction = 8;
+            o->oAction = 8;
+        };
     }
 }
 
 void king_bobomb_act_8(void) {
     if (o->oTimer == 60) {
         stop_background_music(SEQUENCE_ARGS(4, SEQ_EVENT_BOSS));
+        CALL_EVENT(BossBattleEnded);
     }
 }
 
@@ -311,6 +316,7 @@ void king_bobomb_act_5(void) { // bobomb returns home
             if (mario_is_far_below_object(1200.0f)) {
                 o->oAction = 0;
                 stop_background_music(SEQUENCE_ARGS(4, SEQ_EVENT_BOSS));
+                CALL_EVENT(BossBattleEnded);
             }
 
             if (cur_obj_can_mario_activate_textbox_2(500.0f, 100.0f)) {
@@ -366,11 +372,15 @@ void king_bobomb_move(void) {
     cur_obj_call_action_function(sKingBobombActions);
     exec_anim_sound_state(sKingBobombSoundStates);
 
-    if (o->oDistanceToMario < 5000.0f) {
-        cur_obj_enable_rendering();
-    } else {
-        cur_obj_disable_rendering();
-    }
+    bool visible = o->oDistanceToMario < 5000.0f;
+
+    CALL_CANCELLABLE_EVENT(EntityDistanceRender, &visible) {
+        if (visible) {
+            cur_obj_enable_rendering();
+        } else {
+            cur_obj_disable_rendering();
+        }
+    };
 }
 
 void bhv_king_bobomb_loop(void) {

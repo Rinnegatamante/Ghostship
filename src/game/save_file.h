@@ -2,6 +2,8 @@
 #define SAVE_FILE_H
 
 #include <libultra/types.h>
+#include "port/Rando/Types.h"
+#include "port/mods/achievements/Achievements.h"
 
 #include "types.h"
 #include "area.h"
@@ -9,11 +11,49 @@
 #include "course_table.h"
 
 #define EEPROM_SIZE 0x200
+#define SAVE_FILE_SIZE 0x38
+#define MENU_SAVE_DATA_SIZE 0x20
 #define NUM_SAVE_FILES 4
 
 struct SaveBlockSignature {
     u16 magic;
     u16 chksum;
+};
+
+struct RandoSaveCheck {
+    RandoItemId randoItemId;
+    RandoAct randoAct;
+    bool obtained;
+    bool skipped;
+};
+
+struct RandoSaveEntrance {
+    RandoEntranceId randoEntranceId;
+    int16_t destinationId;
+    bool found;
+};
+
+struct RandoSaveOption {
+    const char* randoOptionName;
+    int32_t randoOptionValue;
+};
+
+struct RandoSaveData {
+    struct RandoSaveCheck randoSaveChecks[RC_MAX];
+    struct RandoSaveEntrance randoSaveEntrances[RE_MAX];
+    u32 randoSaveOptions[RO_MAX];
+    u32 finalSeed;
+};
+
+typedef struct ShipSaveFeatures {
+    bool achievements;
+    bool rando;
+} ShipSaveFeatures;
+
+struct ShipSaveData {
+    struct ShipSaveFeatures features;
+    struct AchievementSaveData achievementSaveData;
+    struct RandoSaveData randoSaveData;
 };
 
 struct SaveFile {
@@ -34,6 +74,9 @@ struct SaveFile {
     u8 courseCoinScores[COURSE_STAGES_COUNT];
 
     struct SaveBlockSignature signature;
+
+    // @port: Custom data needs to go after this point
+    struct ShipSaveData shipSaveData;
 };
 
 enum SaveFileIndex {
@@ -58,9 +101,12 @@ struct MainMenuSaveData {
 #endif
 
     // Pad to match the EEPROM size of 0x200 (10 bytes on JP/US, 8 bytes on EU)
-    u8 filler[EEPROM_SIZE / 2 - SUBTRAHEND - NUM_SAVE_FILES * (4 + sizeof(struct SaveFile))];
+    u8 filler[EEPROM_SIZE / 2 - SUBTRAHEND - NUM_SAVE_FILES * (4 + SAVE_FILE_SIZE)];
 
     struct SaveBlockSignature signature;
+
+    // @port: Custom data needs to go after this point
+    struct ShipSaveData shipSaveData;
 };
 
 struct SaveBuffer {
@@ -70,13 +116,13 @@ struct SaveBuffer {
     struct MainMenuSaveData menuData[2];
 };
 
-extern u8 gLastCompletedCourseNum;
-extern u8 gLastCompletedStarNum;
-extern s8 sUnusedGotGlobalCoinHiScore;
-extern u8 gGotFileCoinHiScore;
-extern u8 gCurrCourseStarFlags;
-extern u8 gSpecialTripleJump;
-extern s8 gLevelToCourseNumTable[];
+extern_s u8 gLastCompletedCourseNum;
+extern_s u8 gLastCompletedStarNum;
+extern_s s8 sUnusedGotGlobalCoinHiScore;
+extern_s u8 gGotFileCoinHiScore;
+extern_s u8 gCurrCourseStarFlags;
+extern_s u8 gSpecialTripleJump;
+extern_s s8 gLevelToCourseNumTable[];
 
 // game progress flags
 #define SAVE_FLAG_FILE_EXISTS            /* 0x00000001 */ (1 << 0)
@@ -120,38 +166,38 @@ struct WarpCheckpoint {
     /*0x04*/ u8 warpNode;
 };
 
-extern struct WarpCheckpoint gWarpCheckpoint;
+extern_s struct WarpCheckpoint gWarpCheckpoint;
 
-extern s8 gMainMenuDataModified;
-extern s8 gSaveFileModified;
+extern_s s8 gMainMenuDataModified;
+extern_s s8 gSaveFileModified;
 
-void save_file_do_save(s32 fileIndex);
-void save_file_erase(s32 fileIndex);
-BAD_RETURN(s32) save_file_copy(s32 srcFileIndex, s32 destFileIndex);
-void save_file_load_all(void);
-void save_file_reload(void);
-void save_file_collect_star_or_key(s16 coinScore, s16 starIndex);
-s32 save_file_exists(s32 fileIndex);
-u32 save_file_get_max_coin_score(s32 courseIndex);
-s32 save_file_get_course_star_count(s32 fileIndex, s32 courseIndex);
-s32 save_file_get_total_star_count(s32 fileIndex, s32 minCourse, s32 maxCourse);
-void save_file_set_flags(u32 flags);
-void save_file_clear_flags(u32 flags);
-u32 save_file_get_flags(void);
-u32 save_file_get_star_flags(s32 fileIndex, s32 courseIndex);
-void save_file_set_star_flags(s32 fileIndex, s32 courseIndex, u32 starFlags);
-s32 save_file_get_course_coin_score(s32 fileIndex, s32 courseIndex);
-s32 save_file_is_cannon_unlocked(void);
-void save_file_set_cannon_unlocked(void);
-void save_file_set_cap_pos(s16 x, s16 y, s16 z);
-s32 save_file_get_cap_pos(Vec3s capPos);
-void save_file_set_sound_mode(u16 mode);
-u16 save_file_get_sound_mode(void);
-void save_file_move_cap_to_default_location(void);
+extern_s void save_file_do_save(s32 fileIndex);
+extern_s void save_file_erase(s32 fileIndex);
+extern_s BAD_RETURN(s32) save_file_copy(s32 srcFileIndex, s32 destFileIndex);
+extern_s void save_file_load_all(void);
+extern_s void save_file_reload(void);
+extern_s void save_file_collect_star_or_key(s16 coinScore, s16 starIndex);
+extern_s s32 save_file_exists(s32 fileIndex);
+extern_s u32 save_file_get_max_coin_score(s32 courseIndex);
+extern_s s32 save_file_get_course_star_count(s32 fileIndex, s32 courseIndex);
+extern_s s32 save_file_get_total_star_count(s32 fileIndex, s32 minCourse, s32 maxCourse);
+extern_s void save_file_set_flags(u32 flags);
+extern_s void save_file_clear_flags(u32 flags);
+extern_s u32 save_file_get_flags(void);
+extern_s u32 save_file_get_star_flags(s32 fileIndex, s32 courseIndex);
+extern_s void save_file_set_star_flags(s32 fileIndex, s32 courseIndex, u32 starFlags);
+extern_s s32 save_file_get_course_coin_score(s32 fileIndex, s32 courseIndex);
+extern_s s32 save_file_is_cannon_unlocked(void);
+extern_s void save_file_set_cannon_unlocked(void);
+extern_s void save_file_set_cap_pos(s16 x, s16 y, s16 z);
+extern_s s32 save_file_get_cap_pos(Vec3s capPos);
+extern_s void save_file_set_sound_mode(u16 mode);
+extern_s u16 save_file_get_sound_mode(void);
+extern_s void save_file_move_cap_to_default_location(void);
 
-void disable_warp_checkpoint(void);
-void check_if_should_set_warp_checkpoint(struct WarpNode *warpNode);
-s32 check_warp_checkpoint(struct WarpNode *warpNode);
+extern_s void disable_warp_checkpoint(void);
+extern_s void check_if_should_set_warp_checkpoint(struct WarpNode *warpNode);
+extern_s s32 check_warp_checkpoint(struct WarpNode *warpNode);
 
 #ifdef VERSION_EU
 enum EuLanguages {

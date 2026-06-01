@@ -1,5 +1,17 @@
 #include "GhostshipMenu.h"
 #include "port/mods/BetterLevelSelect.h"
+#include "game/object_list_processor.h"
+#include "include/behavior_data.h"
+#include "game/level_update.h"
+#include "port/Engine.h"
+#include "ship/utils/StringHelper.h"
+#include "ship/scripting/ScriptLoader.h"
+
+extern "C" {
+struct Object* spawn_object_abs_with_rot(struct Object* parent, s16 uselessArg, u32 model,
+                                         const BehaviorScript* behavior, s16 x, s16 y, s16 z, s16 pitch, s16 yaw,
+                                         s16 roll);
+}
 
 namespace GhostshipGui {
 
@@ -88,6 +100,18 @@ void GhostshipMenu::AddMenuDevTools() {
             info.options->Disabled(!CVarGetInteger(CVAR_DEVELOPER_TOOLS("DrawDebugInfo"), 0));
         });
 
+#ifdef USE_NETWORKING
+    AddWidget(path, "Enable Satella", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_DEVELOPER_TOOLS("Satella"))
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "Connect to the Satella relay server on startup. "
+            "Disabling this prevents mod signature verification and online relay features in mods."));
+    AddWidget(path, std::string(ICON_FA_EXCLAMATION_TRIANGLE) + " Mod signing and online relay features are disabled.",
+              WIDGET_TEXT)
+        .Options(UIWidgets::TextOptions{ .color = Colors::Orange })
+        .PreFunc([](WidgetInfo& info) { info.isHidden = (bool)CVarGetInteger(CVAR_DEVELOPER_TOOLS("Satella"), 1); });
+#endif
+
     // Save Editor
     path.sidebarName = "Save Editor";
     AddSidebarEntry("Dev Tools", path.sidebarName, 1);
@@ -96,7 +120,7 @@ void GhostshipMenu::AddMenuDevTools() {
         .WindowName("Save Editor")
         .HideInSearch(true)
         .Options(WindowButtonOptions().Tooltip("Enables the separate Save Editor Window."));
-    
+
     // Console
     path.sidebarName = "Console";
     AddSidebarEntry("Dev Tools", path.sidebarName, 1);
@@ -105,6 +129,140 @@ void GhostshipMenu::AddMenuDevTools() {
         .WindowName("Console##Dev")
         .HideInSearch(true)
         .Options(WindowButtonOptions().Tooltip("Enables the separate Console Window."));
+
+    path.sidebarName = "Event Debugger";
+    AddSidebarEntry("Dev Tools", path.sidebarName, 1);
+    AddWidget(path, "Popout Event Debugger", WIDGET_WINDOW_BUTTON)
+        .CVar(CVAR_WINDOW("EventDebugger"))
+        .WindowName("Event Debugger")
+        .HideInSearch(true)
+        .Options(WindowButtonOptions().Tooltip("Enables the separate Event Debugger Window."));
+
+    path.sidebarName = "Object Viewer";
+    AddSidebarEntry("Dev Tools", path.sidebarName, 1);
+    AddWidget(path, "Popout Object Viewer", WIDGET_WINDOW_BUTTON)
+        .CVar(CVAR_WINDOW("ObjectViewer"))
+        .WindowName("Object Viewer##Dev")
+        .HideInSearch(true)
+        .Options(WindowButtonOptions().Tooltip("Enables the separate Object Viewer Window."));
+
+    path.sidebarName = "Gfx Debugger";
+    AddSidebarEntry("Dev Tools", path.sidebarName, 1);
+    AddWidget(path, "Popout Gfx Debugger", WIDGET_WINDOW_BUTTON)
+        .CVar(CVAR_WINDOW("GfxDebugger"))
+        .WindowName("Gfx Debugger")
+        .HideInSearch(true)
+        .Options(WindowButtonOptions().Tooltip("Enables the separate Gfx Debugger Window."));
 }
+
+#if !defined(__SWITCH__) && !defined(__vita__)
+void GhostshipMenu::AddModMenu() {
+    auto mods = Ship::Context::GetInstance()->GetResourceManager()->GetArchiveManager()->GetArchives();
+    AddMenuEntry("Mods", CVAR_SETTING("Menu.ModsSidebarSection"));
+
+    WidgetPath path = { "Mods", "General", SECTION_COLUMN_1 };
+
+    AddSidebarEntry(path.sectionName, path.sidebarName, 1);
+    AddWidget(path, "Reload Scripts", WIDGET_BUTTON)
+        .Options(ButtonOptions().Tooltip("Reloads all scripts from disk.").Color(Colors::Orange))
+        .Callback([](WidgetInfo& info) {
+            Ship::Context::GetInstance()->GetScriptLoader()->UnloadAll();
+            GameEngine::Instance->LoadScripts();
+        });
+
+    auto keystore = Ship::Context::GetInstance()->GetKeystore();
+    auto allKeys = keystore->GetAllKeys();
+
+    for (const auto& entry : *mods) {
+        const auto& info = entry->GetManifest();
+        if (info.Name.empty()) {
+            continue;
+        }
+
+        std::string cardTitle = info.Name;
+
+        if (!info.Icon.empty()) {
+            cardTitle = info.Icon + " " + cardTitle;
+        }
+
+        if (!info.Main.empty() || !info.Binaries.empty()) {
+            cardTitle += " (Code Mod)";
+        }
+
+        AddWidget(path, cardTitle, WIDGET_SEPARATOR_TEXT).Options(UIWidgets::TextOptions{});
+
+        std::string metadata = "Author: " + (info.Author.empty() ? "Unknown" : info.Author);
+
+        if (!info.Version.empty()) {
+            metadata += "  |  Version: " + info.Version;
+        }
+        if (!info.License.empty()) {
+            metadata += "  |  License: " + info.License;
+        }
+
+        AddWidget(path, metadata, WIDGET_TEXT).Options(UIWidgets::TextOptions{});
+        Ship::KeyOrigin origin = Ship::KeyOrigin::User;
+        for (const auto& key : allKeys) {
+            if (key.Data == StringHelper::HexToBytes(info.PublicKey)) {
+                origin = key.Origin;
+                break;
+            }
+        }
+
+        std::string securityText;
+        if (entry->IsSigned()) {
+            securityText = std::string(ICON_FA_CHECK_CIRCLE) + " Security: Signed (Trusted)";
+            std::string originText;
+            Colors color = Colors::Green;
+            switch (origin) {
+                case Ship::KeyOrigin::User:
+                    originText = "[User Approved]";
+                    color = Colors::Yellow;
+                    break;
+                case Ship::KeyOrigin::Game:
+                    originText = "[Game]";
+                    color = Colors::Purple;
+                    break;
+                case Ship::KeyOrigin::System:
+                    originText = "[System]";
+                    color = Colors::Red;
+                    break;
+            }
+
+            AddWidget(path, securityText, WIDGET_TEXT).Options(UIWidgets::TextOptions{ .color = Colors::Green });
+            AddWidget(path, originText, WIDGET_TEXT).SameLine(true).Options(UIWidgets::TextOptions{ .color = color });
+        } else if (entry->IsChecksumValid()) {
+            securityText = std::string(ICON_FA_EXCLAMATION_TRIANGLE) + " Security: Unsigned (Caution)";
+            AddWidget(path, securityText, WIDGET_TEXT).Options(UIWidgets::TextOptions{ .color = Colors::Orange });
+        } else {
+            securityText = std::string(ICON_FA_EXCLAMATION_TRIANGLE) + " Security: Untrusted";
+            AddWidget(path, securityText, WIDGET_TEXT).Options(UIWidgets::TextOptions{ .color = Colors::Red });
+        }
+
+        if (!info.Dependencies.empty()) {
+            std::string depsString = "Dependencies: ";
+            for (size_t i = 0; i < info.Dependencies.size(); ++i) {
+                depsString += info.Dependencies[i];
+                if (i < info.Dependencies.size() - 1)
+                    depsString += ", ";
+            }
+
+            AddWidget(path, depsString, WIDGET_TEXT).Options(UIWidgets::TextOptions{});
+        }
+
+        if (!info.Description.empty()) {
+            AddWidget(path, info.Description, WIDGET_TEXT).Options(UIWidgets::TextOptions{});
+        }
+
+        if (!info.Website.empty()) {
+            AddWidget(path, "Open Webpage##" + info.Name, WIDGET_BUTTON)
+                .Options(UIWidgets::ButtonOptions{})
+                .Callback([info](WidgetInfo&) { SDL_OpenURL(info.Website.c_str()); });
+        }
+
+        AddWidget(path, "##Spacer_" + info.Name, WIDGET_SEPARATOR).Options(UIWidgets::WidgetOptions{});
+    }
+};
+#endif // __SWITCH__
 
 } // namespace GhostshipGui

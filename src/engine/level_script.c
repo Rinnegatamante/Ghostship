@@ -1,5 +1,6 @@
 #include <libultraship.h>
 #include <string.h>
+#include "port/events/list/PlayerEvent.h"
 
 #include "sm64.h"
 #include "audio/external.h"
@@ -22,7 +23,8 @@
 #include "math_util.h"
 #include "surface_collision.h"
 #include "surface_load.h"
-#include "port/hooks/Events.h"
+#include "seq_ids.h"
+#include "port/events/Events.h"
 
 #define CMD_GET(type, offset) (*(type *) (CMD_PROCESS_OFFSET(offset) + (u8 *) sCurrentCmd))
 
@@ -40,7 +42,7 @@ enum ScriptStatus { SCRIPT_RUNNING = 1, SCRIPT_PAUSED = 0, SCRIPT_PAUSED2 = -1 }
 
 static uintptr_t sStack[32];
 
-static struct AllocOnlyPool *sLevelPool = NULL;
+struct AllocOnlyPool *sLevelPool = NULL;
 
 static u16 sDelayFrames = 0;
 static u16 sDelayFrames2 = 0;
@@ -443,6 +445,7 @@ static void level_cmd_place_object(void) {
 
     if (sCurrAreaIndex != -1 && ((CMD_GET(u8, 2) & val7) || CMD_GET(u8, 2) == 0x1F)) {
         model = CMD_GET(u8, 3);
+
         spawnInfo = alloc_only_pool_alloc(sLevelPool, sizeof(struct SpawnInfo));
 
         spawnInfo->startPos[0] = CMD_GET(s16, 4);
@@ -457,11 +460,17 @@ static void level_cmd_place_object(void) {
         spawnInfo->activeAreaIndex = sCurrAreaIndex;
 
         spawnInfo->behaviorArg = CMD_GET(u32, 16);
-        spawnInfo->behaviorScript = CMD_GET(void *, 20);
+        spawnInfo->behaviorScript = CMD_GET(void*, 20);
+    
         spawnInfo->model = gLoadedGraphNodes[model];
+        spawnInfo->modelId = model;
+
         spawnInfo->next = gAreas[sCurrAreaIndex].objectSpawnInfos;
 
-        gAreas[sCurrAreaIndex].objectSpawnInfos = spawnInfo;
+        CALL_CANCELLABLE_EVENT(SpawnStar, &model, spawnInfo->startPos[0], spawnInfo->startPos[1],
+                               spawnInfo->startPos[2]) {
+            gAreas[sCurrAreaIndex].objectSpawnInfos = spawnInfo;
+        }
     }
 
     sCurrentCmd = CMD_NEXT;
@@ -696,11 +705,16 @@ static void level_cmd_set_music(void) {
         gAreas[sCurrAreaIndex].musicParam = CMD_GET(s16, 2);
         gAreas[sCurrAreaIndex].musicParam2 = CMD_GET(s16, 4);
     }
+    CALL_EVENT(MusicChanged, gAreas[sCurrAreaIndex].musicParam2);
     sCurrentCmd = CMD_NEXT;
 }
 
 static void level_cmd_set_menu_music(void) {
-    set_background_music(0, CMD_GET(s16, 2), 0);
+    s16 seqId = CMD_GET(s16, 2);
+    if(seqId == SEQ_LEVEL_BOSS_KOOPA || seqId == SEQ_LEVEL_BOSS_KOOPA_FINAL) {
+        CALL_EVENT(BossBattleStarted, seqId == SEQ_LEVEL_BOSS_KOOPA ? BOSS_BATTLE_KOOPA : BOSS_BATTLE_KOOPA_FINAL);
+    }
+    set_background_music(0, seqId, 0);
     sCurrentCmd = CMD_NEXT;
 }
 
@@ -821,13 +835,25 @@ struct LevelCommand *level_script_execute(struct LevelCommand *cmd) {
 
     while (sScriptStatus == SCRIPT_RUNNING) {
         LevelScriptJumpTable[sCurrentCmd->type]();
+        CALL_EVENT(LevelScriptExecute, sCurrentCmd->type);
     }
 
     profiler_log_thread5_time(LEVEL_SCRIPT_EXECUTE);
     init_rcp();
+    CALL_EVENT(RenderGamePre);
     render_game();
+    CALL_EVENT(RenderGamePost);
     end_master_display_list();
     alloc_display_list(0);
 
     return sCurrentCmd;
+}
+
+// TODO: Move these elsewhere
+s16 get_current_area_index(void) {
+    return sCurrAreaIndex;
+}
+
+struct AllocOnlyPool* get_level_pool(void) {
+    return sLevelPool;
 }

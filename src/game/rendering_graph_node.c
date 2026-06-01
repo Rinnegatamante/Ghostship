@@ -6,12 +6,24 @@
 #include "gfx_dimensions.h"
 #include "main.h"
 #include "memory.h"
+#include "model_ids.h"
 #include "print.h"
 #include "rendering_graph_node.h"
 #include "shadow.h"
 #include "sm64.h"
 #include "port/interpolation/FrameInterpolation.h"
 #include "port/Matrix.h"
+
+extern void mirror_mode_apply_projection(void);
+extern int mirror_mode_is_enabled(void);
+extern void mirror_mode_undo_projection(void);
+extern int mirror_mode_is_active(void);
+extern s16 gCurrLevelNum;
+extern s16 sCurrPlayMode;
+extern s32 gCurrCreditsEntry;
+extern struct MarioState *gMarioState;
+
+#define PLAY_MODE_NORMAL 0
 
 /**
  * This file contains the code that processes the scene graph for rendering.
@@ -183,7 +195,7 @@ static void geo_append_display_list(void *displayList, s16 layer) {
     gSPLookAt(gDisplayListHead++, &lookAt);
 #endif
     if (gCurGraphNodeMasterList != 0) {
-        FrameInterpolation_RecordOpenChild("geo_append_display_list", displayList);
+        FrameInterpolation_RecordOpenChild("geo_append_display_list", (uintptr_t)layer);
         struct DisplayListNode *listNode =
             alloc_only_pool_alloc(gDisplayListHeap, sizeof(struct DisplayListNode));
 
@@ -264,6 +276,12 @@ static void geo_process_perspective(struct GraphNodePerspective *node) {
         gSPPerspNormalize(gDisplayListHead++, perspNorm);
 
         gSPMatrix(gDisplayListHead++, VIRTUAL_TO_PHYSICAL(mtx), G_MTX_PROJECTION | G_MTX_LOAD | G_MTX_NOPUSH);
+
+        // Apply mirror mode transform after perspective projection
+        // Mirror during: normal gameplay, ending cutscenes, but NOT during credits text rendering
+        if (sCurrPlayMode == PLAY_MODE_NORMAL && gMarioState != NULL && gMarioState->action != 0 && gCurrCreditsEntry == NULL) {
+            mirror_mode_apply_projection();
+        }
 
         gCurGraphNodeCamFrustum = node;
         geo_process_node_and_siblings(node->fnNode.node.children);
@@ -364,7 +382,7 @@ static void geo_process_translation_rotation(struct GraphNodeTranslationRotation
     Mat4 mtxf;
     Vec3f translation;
     Mtx *mtx = alloc_display_list(sizeof(*mtx));
-    FrameInterpolation_RecordOpenChild("geo_process_translation_rotation", TAG_OBJECT(node));
+    FrameInterpolation_RecordOpenChild("geo_process_translation_rotation", (uintptr_t)node);
 
     vec3s_to_vec3f(translation, node->translation);
     mtxf_rotate_zxy_and_translate(mtxf, translation, node->rotation);
@@ -479,16 +497,30 @@ static void geo_process_billboard(struct GraphNodeBillboard *node) {
     vec3s_to_vec3f(translation, node->translation);
     mtxf_billboard(gMatStack[gMatStackIndex], gMatStack[gMatStackIndex - 1], translation,
                    gCurGraphNodeCamera->roll);
+
+    Vec3f billboardScale = { 1.0f, 1.0f, 1.0f };
     if (gCurGraphNodeHeldObject != NULL) {
+        vec3f_copy(billboardScale, gCurGraphNodeHeldObject->objNode->header.gfx.scale);
         mtxf_scale_vec3f(gMatStack[gMatStackIndex], gMatStack[gMatStackIndex],
                          gCurGraphNodeHeldObject->objNode->header.gfx.scale);
     } else if (gCurGraphNodeObject != NULL) {
+        vec3f_copy(billboardScale, gCurGraphNodeObject->scale);
         mtxf_scale_vec3f(gMatStack[gMatStackIndex], gMatStack[gMatStackIndex],
                          gCurGraphNodeObject->scale);
     }
 
     mtxf_to_mtx(mtx, gMatStack[gMatStackIndex]);
     gMatStackFixed[gMatStackIndex] = mtx;
+
+    // Record the parent matrix + parameters so interpolation can re-derive the billboard
+    // matrix at any sub-frame by calling mtxf_billboard(interpolated_parent, ...) rather
+    // than element-wise lerping the camera-space final matrix.
+    FrameInterpolation_RecordBillboardMatrix(
+        (MtxF *) gMatStack[gMatStackIndex - 1],
+        translation[0], translation[1], translation[2],
+        billboardScale[0], billboardScale[1], billboardScale[2],
+        gCurGraphNodeCamera->roll, mtx);
+
     if (node->displayList != NULL) {
         geo_append_display_list(node->displayList, node->node.flags >> 8);
     }
@@ -630,6 +662,11 @@ static void geo_process_animated_part(struct GraphNodeAnimatedPart *node) {
     gMatStackIndex++;
     mtxf_to_mtx(matrixPtr, gMatStack[gMatStackIndex]);
     gMatStackFixed[gMatStackIndex] = matrixPtr;
+    FrameInterpolation_RecordAnimatedPartMatrix(
+        (MtxF*)gMatStack[gMatStackIndex - 1],
+        translation[0], translation[1], translation[2],
+        rotation[0], rotation[1], rotation[2],
+        matrixPtr);
     if (node->displayList != NULL) {
         geo_append_display_list(node->displayList, node->node.flags >> 8);
     }
@@ -736,7 +773,8 @@ static void geo_process_shadow(struct GraphNodeShadow *node) {
         if (shadowList != NULL) {
             mtx = alloc_display_list(sizeof(*mtx));
             gMatStackIndex++;
-            mtxf_translate(mtxf, shadowPos);
+            Vec3f shadowMatPos = { shadowPos[0], gShadowFloorHeight, shadowPos[2] };
+            mtxf_translate(mtxf, shadowMatPos);
             mtxf_mul(gMatStack[gMatStackIndex], mtxf, *gCurGraphNodeCamera->matrixPtr);
             mtxf_to_mtx(mtx, gMatStack[gMatStackIndex]);
             gMatStackFixed[gMatStackIndex] = mtx;
@@ -844,6 +882,35 @@ static s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
     return TRUE;
 }
 
+static const Vtx debug_box_verts[] = {
+    {{{ -1,  0, -1 }, 0, { 0, 0 }, { 0xFF, 0x00, 0x00, 0xFF }}},
+    {{{  1,  0, -1 }, 0, { 0, 0 }, { 0xFF, 0x00, 0x00, 0xFF }}},
+    {{{  1,  0,  1 }, 0, { 0, 0 }, { 0xFF, 0x00, 0x00, 0xFF }}},
+    {{{ -1,  0,  1 }, 0, { 0, 0 }, { 0xFF, 0x00, 0x00, 0xFF }}},
+    {{{ -1,  2, -1 }, 0, { 0, 0 }, { 0xFF, 0x00, 0x00, 0xFF }}},
+    {{{  1,  2, -1 }, 0, { 0, 0 }, { 0xFF, 0x00, 0x00, 0xFF }}},
+    {{{  1,  2,  1 }, 0, { 0, 0 }, { 0xFF, 0x00, 0x00, 0xFF }}},
+    {{{ -1,  2,  1 }, 0, { 0, 0 }, { 0xFF, 0x00, 0x00, 0xFF }}}
+};
+
+// 2. Build the F3D-Compatible Display List
+static const Gfx dl_debug_box[] = {
+    gsDPPipeSync(),
+    gsSPClearGeometryMode(G_LIGHTING | G_CULL_BACK),
+    gsDPSetCombineMode(G_CC_SHADE, G_CC_SHADE),
+    gsDPSetRenderMode(G_RM_AA_ZB_OPA_SURF, G_RM_AA_ZB_OPA_SURF2), // Changed to OPAQUE
+    gsSPVertex(debug_box_verts, 8, 0),
+    gsSP1Triangle(0, 1, 2, 0), gsSP1Triangle(0, 2, 3, 0),
+    gsSP1Triangle(4, 6, 5, 0), gsSP1Triangle(4, 7, 6, 0),
+    gsSP1Triangle(3, 2, 6, 0), gsSP1Triangle(3, 6, 7, 0),
+    gsSP1Triangle(1, 0, 4, 0), gsSP1Triangle(1, 4, 5, 0),
+    gsSP1Triangle(0, 3, 7, 0), gsSP1Triangle(0, 7, 4, 0),
+    gsSP1Triangle(2, 1, 5, 0), gsSP1Triangle(2, 5, 6, 0),
+    gsDPPipeSync(),
+    gsSPSetGeometryMode(G_LIGHTING | G_CULL_BACK),
+    gsSPEndDisplayList(),
+};
+
 /**
  * Process an object node.
  */
@@ -851,9 +918,10 @@ static void geo_process_object(struct Object *node) {
     Mat4 mtxf;
     s32 hasAnimation = (node->header.gfx.node.flags & GRAPH_RENDER_HAS_ANIMATION) != 0;
 
-    FrameInterpolation_RecordOpenChild("geo_process_object", (uintptr_t)node);
+    FrameInterpolation_RecordOpenChild("geo_process_object", (uintptr_t)node->header.gfx.node.uid);
 
-    if (node->header.gfx.areaIndex == gCurGraphNodeRoot->areaIndex) {
+    // OTRTODO: This is not a fix Cal, just warning
+    if (node->header.gfx.areaIndex == gCurGraphNodeRoot->areaIndex || node->custom) {
         if (node->header.gfx.throwMatrix != NULL) {
             mtxf_mul(gMatStack[gMatStackIndex + 1], *node->header.gfx.throwMatrix,
                      gMatStack[gMatStackIndex]);
@@ -867,6 +935,7 @@ static void geo_process_object(struct Object *node) {
 
         mtxf_scale_vec3f(gMatStack[gMatStackIndex + 1], gMatStack[gMatStackIndex + 1],
                          node->header.gfx.scale);
+
         node->header.gfx.throwMatrix = &gMatStack[++gMatStackIndex];
         node->header.gfx.cameraToObject[0] = gMatStack[gMatStackIndex][3][0];
         node->header.gfx.cameraToObject[1] = gMatStack[gMatStackIndex][3][1];
@@ -876,11 +945,46 @@ static void geo_process_object(struct Object *node) {
         if (node->header.gfx.animInfo.curAnim != NULL) {
             geo_set_animation_globals(&node->header.gfx.animInfo, hasAnimation);
         }
+
         if (obj_is_in_view(&node->header.gfx, gMatStack[gMatStackIndex])) {
             Mtx *mtx = alloc_display_list(sizeof(*mtx));
 
             mtxf_to_mtx(mtx, gMatStack[gMatStackIndex]);
             gMatStackFixed[gMatStackIndex] = mtx;
+
+            if ((node->header.gfx.node.flags & GRAPH_RENDER_DRAW_DEBUG) != 0) {
+                Mtx *debugMtx = alloc_display_list(sizeof(Mtx));
+                if (debugMtx != NULL) {
+                    Mat4 debugMat;
+                    Mat4 scaleMat;
+                    Mat4 translateMat;
+                    Mat4 tempMat;
+
+                    mtxf_copy(debugMat, gMatStack[gMatStackIndex]);
+
+                    Vec3f inverseScale = {
+                        (node->header.gfx.scale[0] > 0.001f) ? (node->hitboxRadius / node->header.gfx.scale[0]) : 0.0f,
+                        (node->header.gfx.scale[1] > 0.001f) ? (node->hitboxHeight / node->header.gfx.scale[1]) : 0.0f,
+                        (node->header.gfx.scale[2] > 0.001f) ? (node->hitboxRadius / node->header.gfx.scale[2]) : 0.0f
+                    };
+
+                    mtxf_identity(scaleMat);
+                    mtxf_scale_vec3f(scaleMat, scaleMat, inverseScale);
+
+                    float yOffset = (node->header.gfx.scale[1] > 0.001f) ? (-node->hitboxDownOffset / node->header.gfx.scale[1]) : 0.0f;
+                    mtxf_translate(translateMat, (Vec3f){0.0f, yOffset, 0.0f});
+
+                    mtxf_mul(tempMat, translateMat, scaleMat);
+
+                    mtxf_mul(debugMat, tempMat, debugMat);
+                    mtxf_to_mtx(debugMtx, debugMat);
+
+                    gSPMatrix(gDisplayListHead++, debugMtx, G_MTX_MODELVIEW | G_MTX_MUL | G_MTX_PUSH);
+                    gSPDisplayList(gDisplayListHead++, dl_debug_box);
+                    gSPPopMatrix(gDisplayListHead++, G_MTX_MODELVIEW);
+                }
+            }
+
             if (node->header.gfx.sharedChild != NULL) {
                 gCurGraphNodeObject = (struct GraphNodeObject *) node;
                 node->header.gfx.sharedChild->parent = &node->header.gfx.node;
@@ -896,6 +1000,8 @@ static void geo_process_object(struct Object *node) {
         gMatStackIndex--;
         gCurrAnimType = ANIM_TYPE_NONE;
         node->header.gfx.throwMatrix = NULL;
+    } else {
+        int bp = 0;
     }
     FrameInterpolation_RecordCloseChild();
 }

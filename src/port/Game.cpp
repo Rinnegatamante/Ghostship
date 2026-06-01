@@ -38,7 +38,7 @@ extern "C" void *vita_main(void *argv);
 #ifdef _WIN32
 int SDL_main(int argc, char** argv) {
 #else
-int main() {
+int main(int argc, char* argv[]) {
 #endif
 #ifdef __vita__
 	//sceSysmoduleLoadModule(SCE_SYSMODULE_RAZOR_CAPTURE);
@@ -58,8 +58,10 @@ int main() {
 }
 
 extern "C" void *vita_main(void *argv) {
+    GameEngine::Create(0, argv);
+#else
+    GameEngine::Create(argc, argv);
 #endif
-    GameEngine::Create();
     alloc_pool();
     audio_init();
     sound_init();

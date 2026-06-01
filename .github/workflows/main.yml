@@ -1,4 +1,5 @@
 name: GenerateBuilds
+
 on:
   push:
 
@@ -13,6 +14,12 @@ jobs:
     - uses: actions/checkout@v4
       with:
         submodules: true
+    - name: Extract Project Version
+      id: extract_version
+      run: |
+        VERSION=$(grep -oP '^\s*project\s*\([^)]*VERSION\s+\K[0-9\.]+' CMakeLists.txt)
+        echo "Found version: $VERSION"
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
     - name: Install dependencies
       run: sudo apt-get install gcc g++ git cmake ninja-build lsb-release
     - name: ccache
@@ -23,7 +30,7 @@ jobs:
           ${{ runner.os }}-o2r-ccache-${{ github.ref }}
           ${{ runner.os }}-o2r-ccache-
     - name: Cache build folders
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         key: ${{ runner.os }}-o2r-build-${{ github.ref }}-${{ github.sha }}
         restore-keys: |
@@ -35,7 +42,7 @@ jobs:
       run: |
         export PATH="/usr/lib/ccache:/usr/local/opt/ccache/libexec:$PATH"
         make -C Torch type=release -j3
-        Torch/cmake-build-release/torch pack port ghostship.o2r o2r
+        Torch/cmake-build-release/torch pack port ghostship.o2r o2r -u ${{ steps.extract_version.outputs.version }}
     - uses: actions/upload-artifact@v4
       with:
         name: ghostship.o2r
@@ -49,9 +56,28 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Python dependencies
+        run: pip install -r libultraship/requirements.txt
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          key: ${{ runner.os }}-vcpkg-x64-static-${{ hashFiles('CMakeLists.txt', 'cmake/automate-vcpkg.cmake') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-x64-static-
+          path: |
+            build/x64/vcpkg
+            build/x64/vcpkg_installed
+            build/x64/vcpkg/downloads
       - name: Build
         run: |
-          cmake -S . -B "build/x64" -G "Visual Studio 17 2022" -T v143 -A x64 -DCMAKE_BUILD_TYPE=Release
+          $env:VCPKG_ROOT=""
+          cmake -S . -B "build/x64" -G "Visual Studio 17 2022" -T v143 -A x64 -DCMAKE_BUILD_TYPE=Release -DPython3_EXECUTABLE="$(python -c 'import sys; print(sys.executable)')"
           cmake --build ./build/x64 --config Release --parallel 10
       - name: Download ghostship.o2r
         uses: actions/download-artifact@v4
@@ -60,34 +86,84 @@ jobs:
           path: ./build/x64/Release
       - name: Create Package
         run: |
-          mkdir ghostship-release
-          mkdir ghostship-release/debug
-          mv build/x64/Release/Ghostship.exe ghostship-release/
-          mv build/x64/Release/ghostship.o2r ghostship-release/
-          mv build/x64/Release/*.pdb ghostship-release/debug/
-          mv README.md ghostship-release/readme.txt
-          mv config.yml ghostship-release/
-          mv assets ghostship-release/
-          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/mdqinc/SDL_GameControllerDB/master/gamecontrollerdb.txt" -OutFile "ghostship-release/gamecontrollerdb.txt"
+          mkdir debug
+          if (-Not (Test-Path "build/x64/Release/.tcc")) { Write-Error "ERROR: .tcc not found in build/x64/Release/"; exit 1 }
+          mv build/x64/Release/.tcc .tcc
+          mv build/x64/Release/Ghostship.exe .
+          mv build/x64/Release/tcc.dll .
+          mv build/x64/Release/ghostship.o2r .
+          mv build/x64/Release/*.pdb debug/
+          mv README.md readme.txt
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/mdqinc/SDL_GameControllerDB/master/gamecontrollerdb.txt" -OutFile "gamecontrollerdb.txt"
       - name: Upload build
         uses: actions/upload-artifact@v4
         with:
           name: Ghostship-windows
-          path: ghostship-release
+          include-hidden-files: true
+          path: |
+            .tcc
+            Ghostship.exe
+            tcc.dll
+            ghostship.o2r
+            debug
+            readme.txt
+            config.yml
+            assets
+            gamecontrollerdb.txt
 
   build-macos:
     needs: generate-port-o2r
-    runs-on: macOS-latest
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Install dependencies
-        run: brew install sdl2 libpng glew ninja cmake libzip nlohmann-json tinyxml2 spdlog vorbis-tools
-      - name: Build
+      - name: Configure ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          create-symlink: true
+          save: ${{ github.ref_name == github.event.repository.default_branch }}
+          key: ${{ runner.os }}-14-ccache-${{ github.ref }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-14-ccache-${{ github.ref }}
+            ${{ runner.os }}-14-ccache
+      # Needed to apply sudo for macports cache restore
+      # - name: Install gtar wrapper
+      #   run: |
+      #     sudo mv /opt/homebrew/bin/gtar /opt/homebrew/bin/gtar.orig
+      #     sudo cp .github/workflows/gtar /opt/homebrew/bin/gtar
+      #     sudo chmod +x /opt/homebrew/bin/gtar
+      - name: Restore Cached MacPorts
+        id: restore-cache-macports
+        uses: actions/cache/restore@v4
+        with:
+          key: ${{ runner.os }}-14-macports-${{ github.ref }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-14-macports-${{ github.ref }}
+            ${{ runner.os }}-14-macports-
+          path: /opt/local/
+      - name: Install MacPorts (if necessary)
         run: |
-          cmake -H. -Bbuild-cmake -GNinja -DCMAKE_BUILD_TYPE=Release
-          cmake --build build-cmake --config Release -j3
+          if command -v /opt/local/bin/port 2>&1 >/dev/null; then
+            echo "MacPorts already installed"
+          else
+            echo "Installing MacPorts"
+            wget https://github.com/macports/macports-base/releases/download/v2.11.5/MacPorts-2.11.5-14-Sonoma.pkg
+            sudo installer -pkg ./MacPorts-2.11.5-14-Sonoma.pkg -target /
+          fi
+          echo "/opt/local/bin:/opt/local/sbin" >> "$GITHUB_PATH"
+      - name: Install Python dependencies
+        run: python3 -m pip install -r libultraship/requirements.txt --break-system-packages || python3 -m pip install -r libultraship/requirements.txt
+      - name: Install dependencies
+        run: |
+          brew uninstall --ignore-dependencies libpng
+          sudo port install libsdl2 +universal libsdl2_net +universal libpng +universal glew +universal libzip +universal nlohmann-json +universal tinyxml2 +universal libogg +universal libopus +universal opusfile +universal libvorbis +universal mbedtls +universal
+          brew install ninja
+      - name: Build (Universal)
+        run: |
+          export PATH="/usr/lib/ccache:/opt/homebrew/opt/ccache/libexec:/usr/local/opt/ccache/libexec:$PATH"
+          cmake --no-warn-unused-cli -H. -Bbuild-cmake -GNinja -DCMAKE_BUILD_TYPE:STRING=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DPython3_EXECUTABLE=$(which python3)
+          cmake --build build-cmake --config Release --parallel 10
       - name: Download ghostship.o2r
         uses: actions/download-artifact@v4
         with:
@@ -97,14 +173,24 @@ jobs:
         run: |
           (cd build-cmake && cpack)
           mv _packages/*.dmg Ghostship.dmg
+          ls -la build-cmake/.tcc || (echo "ERROR: .tcc not found in build-cmake/" && exit 1)
+          cp -r build-cmake/.tcc .tcc
           mv README.md readme.txt
       - name: Publish packaged artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Ghostship-mac
+          include-hidden-files: true
           path: |
+            .tcc
             Ghostship.dmg
             readme.txt
+      - name: Save Cache MacPorts
+        if: ${{ github.ref_name == github.event.repository.default_branch }}
+        uses: actions/cache/save@v4
+        with:
+          key: ${{ steps.restore-cache-macports.outputs.cache-primary-key }}
+          path: /opt/local/
 
   build-linux:
     needs: generate-port-o2r
@@ -116,7 +202,7 @@ jobs:
       - name: Update machine
         run: sudo apt update
       - name: Install dependencies
-        run: sudo apt-get install gcc g++ git cmake ninja-build lsb-release libsdl2-dev libpng-dev libsdl2-net-dev libzip-dev zipcmp zipmerge ziptool nlohmann-json3-dev libtinyxml2-dev libspdlog-dev libboost-dev libopengl-dev libogg-dev libvorbis-dev
+        run: sudo apt-get install gcc g++ git cmake ninja-build lsb-release libsdl2-dev libpng-dev libsdl2-net-dev libzip-dev zipcmp zipmerge ziptool nlohmann-json3-dev libtinyxml2-dev libspdlog-dev libboost-dev libopengl-dev libogg-dev libvorbis-dev libmbedtls-dev
       - name: ccache
         uses: hendrikmuhs/ccache-action@v1.2.14
         with:
@@ -125,7 +211,7 @@ jobs:
             linux-ccache-${{ github.ref }}
             linux-ccache-
       - name: Cache build folders
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           key: linux-build-${{ github.ref }}-${{ github.sha }}
           restore-keys: |
@@ -172,6 +258,12 @@ jobs:
           make
           sudo make install
           sudo cp -av /usr/local/lib/libzip* /lib/x86_64-linux-gnu/
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Python dependencies
+        run: pip install -r libultraship/requirements.txt
       - name: Download ghostship.o2r
         uses: actions/download-artifact@v4
         with:
@@ -179,26 +271,32 @@ jobs:
           path: ./build-cmake
       - name: Build
         run: |
-          cmake -H. -Bbuild-cmake -GNinja -DCMAKE_BUILD_TYPE=Release
+          cmake -H. -Bbuild-cmake -GNinja -DCMAKE_BUILD_TYPE=Release -DPython3_EXECUTABLE=$(which python3)
           cmake --build build-cmake --config Release -j3
           (cd build-cmake && cpack -G External)
-          wget -O gamecontrollerdb.txt https://raw.githubusercontent.com/mdqinc/SDL_GameControllerDB/refs/heads/master/gamecontrollerdb.txt
+          wget -O gamecontrollerdb.txt https://raw.githubusercontent.com/mdqinc/SDL_GameControllerDB/master/gamecontrollerdb.txt
           mv README.md readme.txt
           mv build-cmake/*.appimage ghostship.appimage
+          ls -la build-cmake/.tcc || (echo "ERROR: .tcc not found in build-cmake/" && exit 1)
+          cp -r build-cmake/.tcc .tcc
       - name: Upload build
         uses: actions/upload-artifact@v4
         with:
           name: Ghostship-linux
+          include-hidden-files: true
           path: |
+            .tcc
             ghostship.appimage
+            config.yml
+            readme.txt
+            assets
             gamecontrollerdb.txt
 
   build-switch:
-    if: false
     needs: generate-port-o2r
     runs-on: ubuntu-latest
     container:
-      image: devkitpro/devkita64:20241023
+      image: devkitpro/devkita64:20260219
     steps:
       - uses: actions/checkout@v4
         with:
@@ -208,22 +306,29 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build
           sudo apt-get remove -y cmake
+          sudo dkp-pacman -R --noconfirm switch-tinyxml2 # devkitPro's tinyxml2 is too old and causes build issues
+          export CFLAGS="${CFLAGS} -include strings.h" # weird libzip error (pulled in by LUS) that only happens in CI and not for SoH        
           git -C libultraship remote add nx https://github.com/Net64DD/libultraship.git
           git -C libultraship fetch nx
-          git -C libultraship checkout nx/main-nx
+          git -C libultraship checkout nx/main-nx-nightly
           wget https://github.com/Kitware/CMake/releases/download/v3.28.3/cmake-3.28.3-linux-x86_64.sh -O /tmp/cmake.sh
           sudo sh /tmp/cmake.sh --prefix=/usr/local/ --exclude-subdir
-          cmake -H. -Bbuild-switch -GNinja -DCMAKE_TOOLCHAIN_FILE=/opt/devkitpro/cmake/Switch.cmake
+          cmake -H. -Bbuild-switch -GNinja -DCMAKE_TOOLCHAIN_FILE=/opt/devkitpro/cmake/Switch.cmake -DCMAKE_BUILD_TYPE:STRING=Release
           cmake --build build-switch --config Release -j3
           wget -O gamecontrollerdb.txt https://raw.githubusercontent.com/mdqinc/SDL_GameControllerDB/refs/heads/master/gamecontrollerdb.txt
           mv README.md readme.txt
           mv build-switch/*.nro Ghostship.nro
+      - name: Download ghostship.o2r
+        uses: actions/download-artifact@v4
+        with:
+          name: ghostship.o2r
       - name: Upload build
         uses: actions/upload-artifact@v4
         with:
           name: Ghostship-switch
           path: |
             Ghostship.nro
+            ghostship.o2r
             config.yml
             assets
             gamecontrollerdb.txt
