@@ -75,15 +75,6 @@ class ResourceManager {
     size_t UnloadResource(const std::string& filePath);
 
     /**
-     * @brief Writes raw data into an archive and optionally evicts the stale cache entry.
-     * @param identifier Identifier of the resource to write.
-     * @param data       Raw bytes to write.
-     * @param unloadFile If true, removes the old cache entry after writing.
-     * @return true on success.
-     */
-    bool WriteResource(const ResourceIdentifier& identifier, const std::vector<uint8_t>& data, bool unloadFile);
-
-    /**
      * @brief Loads all resources whose paths match the given glob mask.
      * @param searchMask Glob pattern (e.g. @c "textures/ui/\*" ).
      * @return Pointer to a vector of loaded IResource objects.

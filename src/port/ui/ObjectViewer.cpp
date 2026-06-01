@@ -49,7 +49,7 @@ const char* GetFunctionName(const uintptr_t addr) {
         functionNameCache[addr] = pSymbol->Name;
         return functionNameCache[addr].c_str();
     }
-#elif !defined(__SWITCH__)
+#elif !defined(__SWITCH__) && !defined(__vita__)
     Dl_info info;
     if (dladdr(reinterpret_cast<void*>(addr), &info) && info.dli_sname) {
         functionNameCache[addr] = info.dli_sname;

@@ -58,8 +58,10 @@ int main(int argc, char* argv[]) {
 }
 
 extern "C" void *vita_main(void *argv) {
-#endif
+    GameEngine::Create(0, argv);
+#else
     GameEngine::Create(argc, argv);
+#endif
     alloc_pool();
     audio_init();
     sound_init();

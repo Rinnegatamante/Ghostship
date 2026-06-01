@@ -13,12 +13,12 @@
 #include "ship/utils/StringHelper.h"
 #ifdef ENABLE_SCRIPTING
 #include "ship/security/Keystore.h"
+#include <monocypher.h>
+#include <monocypher-ed25519.h>
 #endif
 
 #include <tinyxml2.h>
-#include <monocypher.h>
 #include <nlohmann/json.hpp>
-#include <monocypher-ed25519.h>
 
 namespace Ship {
 Archive::Archive(const std::string& path)

@@ -148,7 +148,7 @@ void GhostshipMenu::InitElement() {
     AddMenuRando();
     AddMenuAchievements();
     AddMenuDevTools();
-#ifndef __SWITCH__
+#if !defined(__SWITCH__) && !defined(__vita__)
     AddModMenu();
 #endif
 

@@ -172,7 +172,7 @@ GameEngine::GameEngine() : dictionary(nullptr) {
     this->context->InitResourceManager({ assets_path }, {}, 3);
     this->context->InitConsole();
 
-#ifndef __SWITCH__
+#if !defined(__SWITCH__) && !defined(__vita__)
     this->context->GetResourceManager()->GetArchiveManager()->SetUntrustedArchiveHandler(
         [](Ship::Archive& archive, Ship::KeystoreEntry& key) {
             const auto info = archive.GetManifest();
@@ -298,7 +298,7 @@ void CheckAndCreateModFolder() {
 }
 
 static void SetupScriptLoader(std::shared_ptr<Ship::Context> context) {
-#ifdef __SWITCH__
+#if defined(__SWITCH__) || defined(__vita__)
     return;
 #else
     constexpr int codeVersion = 1;
@@ -507,14 +507,14 @@ void GameEngine::FinishInit() {
     Instance->AudioInit();
     Instance->LoadDictionary();
     Instance->LoadPlayerAnims();
-#if defined(__SWITCH__) || defined(__WIIU__)
+#if defined(__SWITCH__) || defined(__WIIU__) || defined(__vita__)
     CVarRegisterInteger(CVAR_IMGUI_CONTROLLER_NAV, 1); // always enable controller nav on switch/wii u
 #endif
     GhostshipGui::SetupGuiElements();
     DevConsole_Init();
     PortEnhancements_Init();
     ShipInit::InitAll();
-#ifndef __SWITCH__
+#if !defined(__SWITCH__) && !defined(__vita__)
     context->GetScriptLoader()->LoadAll();
 #endif
     CALL_EVENT(EngineReady);
@@ -544,7 +544,7 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
             args.push_back(argv[i]);
         }
     }
-#if !defined(__SWITCH__) && !defined(__WIIU__)
+#if !defined(__SWITCH__) && !defined(__WIIU__) && !defined(__vita__)
     GameExtractor extract;
 #endif
     PromptSteps promptStep = PS_FILE_CHECK;
@@ -566,6 +566,17 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
             "Your sm64.o2r were created with incompatible versions of SoH.\n"
             "Please regenerate a new ROM O2R using the PC version, place it on the SD card and relaunch.");
     }
+#elif defined(__vita__)
+    if (!found) {
+        GhostshipGui::RegisterPopup("Missing O2R ROM Archives",
+                                    "The sm64.o2r file is missing.\n"
+                                    "Please generate a ROM O2R using the PC version, place it on the SD card and relaunch.",
+                                    "OK", "", [&]() {
+                                        gsFast3dWindow = nullptr;
+                                        context = nullptr;
+                                        exit(1);
+                                    });
+	}
 #else
     if (!std::filesystem::exists(installPath + "/assets")) {
         GhostshipGui::RegisterPopup("Extractor assets not found",
@@ -583,7 +594,9 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
         std::filesystem::remove("sm64.o2r");
     }
 #endif
+#ifndef __vita__
     std::shared_ptr<BS::thread_pool> threadPool = std::make_shared<BS::thread_pool>(1);
+#endif
     while (true) {
 #ifdef USE_NETWORKING
         auto satellaPhase = Satella::Client::Instance().GetPhase();
@@ -602,7 +615,7 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
                 // if (portArchiveVersionMatch) {
 #ifdef _WIN32
                 extractStep = ES_WINDOWS;
-#elif (defined(__WIIU__) || defined(__SWITCH__))
+#elif (defined(__WIIU__) || defined(__SWITCH__)) || defined(__vita__)
                 extractStep = ES_VERIFY;
 #else
                 extractStep = ES_EXTRACT;
@@ -674,7 +687,9 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
                                 "OK", "", [&]() {
                                     fclose(tfile);
                                     PathTestCleanup(tfile);
+#ifndef __vita__
                                     threadPool = nullptr;
+#endif
                                     gsFast3dWindow = nullptr;
                                     context = nullptr;
                                     exit(0);
@@ -687,7 +702,9 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
                                     "Ghostship does not have proper file permissions.\nPlease move it to a "
                                     "folder that does and run again.",
                                     "OK", "", [&]() {
-                                        threadPool = nullptr;
+#ifndef __vita__
+										threadPool = nullptr;
+#endif
                                         gsFast3dWindow = nullptr;
                                         context = nullptr;
                                         exit(0);
@@ -705,7 +722,9 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
                                 "Please move it to a folder outside of OneDrive, like the root of a\n"
                                 "drive (e.g. \"C:\\Games\\Ghostship\").",
                                 "OK", "", [&]() {
+#ifndef __vita__
                                     threadPool = nullptr;
+#endif
                                     gsFast3dWindow = nullptr;
                                     context = nullptr;
                                     exit(0);
@@ -726,7 +745,7 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
                 break;
             }
             case ES_EXTRACT_ARGS: {
-#if !defined(__SWITCH__) && !defined(__WIIU__)
+#if !defined(__SWITCH__) && !defined(__WIIU__) && !defined(__vita__)
                 if (args.size() == 0) {
                     GhostshipGui::RegisterPopup(
                         "Run Ghostship", "All files have been processed. Run Ghostship?", "Yes", "No",
@@ -783,7 +802,7 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
                 break;
             }
             case ES_EXTRACT: {
-#if !defined(__SWITCH__) && !defined(__WIIU__)
+#if !defined(__SWITCH__) && !defined(__WIIU__) && !defined(__vita__)
                 switch (promptStep) {
                     case PS_FILE_CHECK: {
                         const bool romO2RExists =
@@ -857,7 +876,9 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
                     GhostshipGui::RegisterPopup("No ROM Archive",
                                                 "No ROM O2R file detected. Please generate a ROM O2R and relaunch.",
                                                 "OK", "", [&]() {
+#ifndef __vita__
                                                     threadPool = nullptr;
+#endif
                                                     gsFast3dWindow = nullptr;
                                                     context = nullptr;
                                                     exit(0);
@@ -888,8 +909,11 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
                 break;
             case GS_LOAD: {
                 LoadResourceFiles();
+#ifdef __vita__
+                    extractDone = true;
+#else
                 threadPool->submit_task([&]() -> void {
-#ifndef __SWITCH__
+#if !defined(__SWITCH__)
                     auto scripting = Ship::Context::GetInstance()->GetScriptLoader();
                     auto pre = [&](const std::shared_ptr<Ship::Archive>& archive) {
                         auto& info = archive->GetManifest();
@@ -900,6 +924,7 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
 #endif
                     extractDone = true;
                 });
+#endif
                 continue;
             }
             default:
@@ -908,7 +933,9 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
 
     render:
         if (!WindowIsRunning()) {
+#ifndef __vita__
             threadPool = nullptr;
+#endif
             gsFast3dWindow = nullptr;
             context = nullptr;
             exit(0);
@@ -953,7 +980,7 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
             ImGui::PopStyleVar(2);
         }
 
-#ifndef __SWITCH__
+#if !defined(__SWITCH__) && !defined(__vita__)
         bool ghostshipPopupActive = totalScripts > 0 || satellaActive;
 #else
         bool ghostshipPopupActive = totalScripts > 0;
@@ -999,13 +1026,15 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
         gsFast3dWindow->EndFrame();
         ImGui::PopStyleColor(2);
     }
+#ifndef __vita__
     threadPool = nullptr;
+#endif
 
 #if defined(__WIIU__)
     Ship::WiiU::Init(appShortName);
 #endif
 
-#if not defined(__SWITCH__) && not defined(__WIIU__)
+#if not defined(__SWITCH__) && not defined(__WIIU__) && !defined(__vita__)
     CheckAndCreateModFolder();
 #endif
     if (menuWasVisible) {
@@ -1063,7 +1092,7 @@ void GameEngine::ScaleImGui() {
 }
 
 void GameEngine::LoadScripts() {
-#ifndef __SWITCH__
+#if !defined(__SWITCH__) && !defined(__vita__)
     auto scripting = Ship::Context::GetInstance()->GetScriptLoader();
     Notification::Emit(
         { .message = "Loading mods this may take a while...", .remainingTime = (totalScripts * 5.0f), .mute = true });
@@ -1306,7 +1335,7 @@ void GameEngine::RunCommands(Gfx* Commands, const std::vector<FrameInterpolation
 
     interpreter->mInterpolationIndex = 0;
     for (const auto& r : replacements) {
-#ifdef __SWITCH__ // Switch LUS Needs to be updated, so for now lets keep it simple
+#if defined(__SWITCH__) || defined(__vita__) // Switch LUS Needs to be updated, so for now lets keep it simple
         wnd->DrawAndRunGraphicsCommands(Commands, r.mtx);
 #else
         wnd->DrawAndRunGraphicsCommands(Commands, r.mtx, r.dl);
