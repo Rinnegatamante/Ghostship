@@ -24,6 +24,12 @@ Ship::MemoryStream::MemoryStream(std::shared_ptr<std::vector<char>> buffer) : Me
     mBaseAddress = 0;
 }
 
+Ship::MemoryStream::MemoryStream(std::shared_ptr<std::vector<char>> buffer, size_t offset) : MemoryStream() {
+    mBuffer = buffer;
+    mBufferSize = buffer->size();
+    mBaseAddress = offset;
+}
+
 Ship::MemoryStream::~MemoryStream() {
 }
 
@@ -50,8 +56,8 @@ std::unique_ptr<char[]> Ship::MemoryStream::Read(size_t length) {
     return result;
 }
 
-void Ship::MemoryStream::Read(const char* dest, size_t length) {
-    memcpy_s((void*)dest, length, &mBuffer->at(mBaseAddress), length);
+void Ship::MemoryStream::Read(char* dest, size_t length) {
+    memcpy_s(dest, length, &mBuffer->at(mBaseAddress), length);
     mBaseAddress += length;
 }
 

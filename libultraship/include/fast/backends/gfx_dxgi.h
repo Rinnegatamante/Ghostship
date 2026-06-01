@@ -2,6 +2,7 @@
 #if defined(ENABLE_DX11) || defined(ENABLE_DX12)
 
 #include "gfx_rendering_api.h"
+#include "ship/utils/HResultException.h"
 
 #include <functional>
 
@@ -32,6 +33,8 @@ class GfxWindowBackendDXGI final : public GfxWindowBackend {
     void SetMouseCapture(bool capture) override;
     bool IsMouseCaptured() override;
     void GetDimensions(uint32_t* width, uint32_t* height, int32_t* posX, int32_t* posY) override;
+    void SetDimensions(uint32_t width, uint32_t height, int32_t posX, int32_t posY) override;
+    Ship::WindowRect GetPrimaryMonitorRect() override;
     void HandleEvents() override;
     bool IsFrameReady() override;
     void SwapBuffersBegin() override;
@@ -51,8 +54,7 @@ class GfxWindowBackendDXGI final : public GfxWindowBackend {
     // These need to be public to be accessible in the window callback
     void CreateSwapChain(IUnknown* mDevice, std::function<void()>&& before_destroy_fn);
     void CreateFactoryAndDevice(bool debug, int d3d_version, class GfxRenderingAPIDX11* self,
-                                bool (*createFunc)(class GfxRenderingAPIDX11* self, IDXGIAdapter1* adapter,
-                                                   bool test_only));
+                                bool (*createFunc)(class GfxRenderingAPIDX11* self, bool SoftwareRenderer));
     void OnKeydown(WPARAM wParam, LPARAM lParam);
     void OnKeyup(WPARAM wParam, LPARAM lParam);
     void OnMouseButtonDown(int btn);

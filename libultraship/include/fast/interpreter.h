@@ -10,11 +10,13 @@
 #include <stack>
 #include <string>
 #include <string_view>
+#include <memory>
 
 #include "fast/lus_gbi.h"
 #include "fast/types.h"
 #include "fast/ucodehandlers.h"
 #include "backends/gfx_rendering_api.h"
+#include "fast/debug/GfxDebugger.h"
 
 #include "fast/resource/type/Texture.h"
 #include "ship/resource/Resource.h"
@@ -84,7 +86,8 @@ enum class ShaderOpts {
     TEXEL1_MASK,
     TEXEL0_BLEND,
     TEXEL1_BLEND,
-    USE_SHADER,
+    PRIM_DEPTH,
+    PRISM_SHADER, // 16-bit width
     MAX
 };
 
@@ -94,6 +97,7 @@ enum class ShaderOpts {
 struct ColorCombinerKey {
     uint64_t combine_mode;
     uint64_t options;
+    uint64_t shader_id;
 
 #ifdef __cplusplus
     auto operator<=>(const ColorCombinerKey&) const = default;
@@ -115,6 +119,7 @@ struct CCFeatures {
     bool opt_alpha_threshold;
     bool opt_invisible;
     bool opt_grayscale;
+    bool opt_prim_depth;
     bool usedTextures[2];
     bool used_masks[2];
     bool used_blend[2];
@@ -127,7 +132,7 @@ struct CCFeatures {
     int16_t shader_id;
 };
 
-void gfx_cc_get_features(uint64_t shader_id0, uint32_t shader_id1, struct CCFeatures* cc_features);
+void gfx_cc_get_features(uint64_t shader_id0, uint64_t shader_id1, struct CCFeatures* cc_features);
 
 union Gfx;
 
@@ -137,6 +142,10 @@ class GfxRenderingAPI;
 class GfxWindowBackend;
 
 constexpr size_t MAX_SEGMENT_POINTERS = 16;
+constexpr size_t SHADER_ID_SHIFT = 17;
+constexpr int16_t ShaderIdUnmask(int id) {
+    return (id >> SHADER_ID_SHIFT) & 0xFFFF;
+}
 
 struct GfxExecStack {
     // This is a dlist stack used to handle dlist calls.
@@ -238,12 +247,6 @@ struct RawTexMetadata {
     Fast::TextureType type;
 };
 
-struct ShaderMod {
-    bool enabled = false;
-    int16_t id;
-    uint8_t type;
-};
-
 #define MAX_LIGHTS 32
 #define MAX_VERTICES 64
 
@@ -272,11 +275,17 @@ struct RSP {
     } texture_scaling_factor;
 
     struct LoadedVertex loaded_vertices[MAX_VERTICES + 4];
-    ShaderMod current_shader;
 };
 
 struct RDP {
     const uint8_t* palettes[2];
+    // Original DRAM source address of the most recent TLUT load per palette half.
+    // Used in texture cache keys instead of palettes[] (which always points to staging).
+    const uint8_t* palette_dram_addr[2];
+    // CI4 palette staging buffer: N64 TMEM holds up to 16 CI4 palettes (16 entries x 2 bytes each = 32 bytes per
+    // palette). palettes[0] covers indices 0-7 (256 bytes), palettes[1] covers 8-15 (256 bytes). GfxDpLoadTlut copies
+    // TLUT data here at the correct offset so multi-palette CI4 models work.
+    uint8_t palette_staging[2][256];
     struct {
         const uint8_t* addr;
         uint8_t siz;
@@ -313,10 +322,16 @@ struct RDP {
     uint32_t other_mode_l, other_mode_h;
     uint64_t combine_mode;
     bool grayscale;
-    ShaderMod current_shader;
 
     uint8_t prim_lod_fraction;
-    struct RGBA env_color, prim_color, fog_color, fill_color, grayscale_color;
+    uint16_t prim_depth;
+    struct RGBA env_color, prim_color, fog_color, blend_color, fill_color, grayscale_color;
+
+    // Chroma key parameters (G_SETKEYR / G_SETKEYGB)
+    struct RGBA key_center;
+    struct RGBA key_scale;
+    int16_t convert_k[6]; // YUV convert coefficients (G_SETCONVERT) — K0-K5
+
     struct XYWidthHeight viewport, scissor;
     bool viewport_or_scissor_changed;
     void* z_buf_address;
@@ -345,7 +360,7 @@ struct GfxTextureCache {
 
 struct ColorCombiner {
     uint64_t shader_id0;
-    uint32_t shader_id1;
+    uint64_t shader_id1;
     bool usedTextures[2];
     struct ShaderProgram* prg[16];
     uint8_t shader_input_mapping[2][7];
@@ -365,6 +380,7 @@ struct FBInfo {
     uint32_t applied_width, applied_height; // Up-scaled for the viewport
     uint32_t native_width, native_height;   // Max "native" size of the screen, used for up-scaling
     bool resize;                            // Scale to match the viewport
+    bool forceFixedAspect;                  // Preserve aspect ratio even if resize is true
 };
 
 struct MaskedTextureEntry {
@@ -380,6 +396,8 @@ class Interpreter {
     void Init(GfxWindowBackend* wapi, class GfxRenderingAPI* rapi, const char* game_name, bool start_in_fullscreen,
               uint32_t width, uint32_t height, uint32_t posX, uint32_t posY);
     void Destroy();
+    void SetGfxDebugger(std::shared_ptr<GfxDebugger> debugger);
+    std::shared_ptr<GfxDebugger> GetGfxDebugger() const;
     void GetDimensions(uint32_t* width, uint32_t* height, int32_t* posX, int32_t* posY);
     GfxRenderingAPI* GetCurrentRenderingAPI();
     void StartFrame();
@@ -393,7 +411,7 @@ class Interpreter {
     void SetTargetFps(int fps);
     void SetMaxFrameLatency(int latency);
     int CreateFrameBuffer(uint32_t width, uint32_t height, uint32_t native_width, uint32_t native_height,
-                          uint8_t resize);
+                          uint8_t resize, bool forceFixedAspect = false);
     void SetFrameBuffer(int fb, float noiseScale);
     void CopyFrameBuffer(int fb_dst_id, int fb_src_id, bool copyOnce, bool* hasCopiedPtr);
     void ResetFrameBuffer();
@@ -402,6 +420,12 @@ class Interpreter {
     uint16_t GetPixelDepth(float x, float y);
     void RegisterBlendedTexture(const char* name, uint8_t* mask, uint8_t* replacement);
     void UnregisterBlendedTexture(const char* name);
+
+    // Register a CPU address as a mirror of a GPU framebuffer texture.
+    // When ImportTexture encounters this address, it uses SelectTextureFb instead
+    // of reading from CPU memory — giving full GPU resolution with no readback.
+    void RegisterFbTexture(const void* cpuAddr, int fbId);
+    void UnregisterFbTexture(const void* cpuAddr);
 
     void SetNativeDimensions(float width, float height);
     void SetResolutionMultiplier(float multiplier);
@@ -412,6 +436,7 @@ class Interpreter {
     void Flush();
     ShaderProgram* LookupOrCreateShaderProgram(uint64_t id0, uint64_t id1);
     ColorCombiner* LookupOrCreateColorCombiner(const ColorCombinerKey& key);
+    void ShaderCacheClear();
     void TextureCacheClear();
     bool TextureCacheLookup(int i, const TextureCacheKey& key);
     void TextureCacheDelete(const uint8_t* origAddr);
@@ -478,7 +503,6 @@ class Interpreter {
     float AdjXForAspectRatio(float x) const;
     void AdjustVIewportOrScissor(XYWidthHeight* area);
     void CalcAndSetViewport(const F3DVp_t* viewport);
-    int16_t CreateShader(const std::string& path);
 
     void SpReset();
     void* SegAddr(uintptr_t w1);
@@ -517,6 +541,7 @@ class Interpreter {
     size_t mBufVboNumTris{};
     GfxWindowBackend* mWapi = nullptr;
     GfxRenderingAPI* mRapi = nullptr;
+    std::shared_ptr<GfxDebugger> mGfxDebugger;
 
     uintptr_t mSegmentPointers[MAX_SEGMENT_POINTERS]{};
 
@@ -531,10 +556,15 @@ class Interpreter {
     std::set<std::pair<float, float>> mGetPixelDepthPending; // get_pixel_depth_pending;
     std::unordered_map<std::pair<float, float>, uint16_t, hash_pair_ff> mGetPixelDepthCached; // get_pixel_depth_cached;
     std::map<std::string, MaskedTextureEntry, std::less<>> mMaskedTextures;
+    std::unordered_map<uintptr_t, int> mFbTextures; // CPU addr -> GPU FB id
 
     const robin_hood::unordered_map<Mtx*, MtxF>* mCurMtxReplacements;
     bool mMarkerOn; // This was originally a debug feature. Now it seems to control s2dex?
-    std::vector<std::string> shader_ids;
+    std::unordered_map<size_t, const char*> mShaders;
+
+    typedef size_t ShaderId;
+    std::stack<ShaderId> mShaderStack;
+    size_t mShadersIndex;
     int mInterpolationIndex;
     int mInterpolationIndexTarget;
 };
@@ -542,10 +572,12 @@ class Interpreter {
 void gfx_set_target_ucode(UcodeHandlers ucode);
 void gfx_push_current_dir(char* path);
 int32_t gfx_check_image_signature(const char* imgData);
+const char* gfx_get_shader(int16_t id);
 const char* GfxGetOpcodeName(int8_t opcode);
 
 } // namespace Fast
 
 extern "C" void gfx_texture_cache_clear();
+extern "C" void gfx_shader_cache_clear();
 extern "C" int gfx_create_framebuffer(uint32_t width, uint32_t height, uint32_t native_width, uint32_t native_height,
-                                      uint8_t resize);
+                                      uint8_t resize, bool forceFixedAspect = false);

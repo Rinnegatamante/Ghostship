@@ -25,6 +25,8 @@ class GfxWindowBackendSDL2 final : public GfxWindowBackend {
     void SetMouseCapture(bool capture) override;
     bool IsMouseCaptured() override;
     void GetDimensions(uint32_t* width, uint32_t* height, int32_t* posX, int32_t* posY) override;
+    void SetDimensions(uint32_t width, uint32_t height, int32_t posX, int32_t posY) override;
+    Ship::WindowRect GetPrimaryMonitorRect() override;
     void HandleEvents() override;
     bool IsFrameReady() override;
     void SwapBuffersBegin() override;
@@ -57,6 +59,9 @@ class GfxWindowBackendSDL2 final : public GfxWindowBackend {
     int mSdlToLusTable[512];
     float mMouseWheelX = 0.0f;
     float mMouseWheelY = 0.0f;
+#ifdef __OpenBSD__
+    int mBsdTick; // store kern.clockrate's tick (microseconds) to adjust sleep timing
+#endif
     // OTRTODO: These are redundant. Info can be queried from SDL.
     int mWindowWidth = 640;
     int mWindowHeight = 480;

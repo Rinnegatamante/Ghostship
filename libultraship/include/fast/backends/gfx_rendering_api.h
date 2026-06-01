@@ -30,8 +30,9 @@ class GfxRenderingAPI {
     virtual bool GetClipParameters() = 0;
     virtual void UnloadShader(ShaderProgram* oldPrg) = 0;
     virtual void LoadShader(ShaderProgram* newPrg) = 0;
-    virtual ShaderProgram* CreateAndLoadNewShader(uint64_t shaderId0, uint32_t shaderId1) = 0;
-    virtual ShaderProgram* LookupShader(uint64_t shaderId0, uint32_t shaderId1) = 0;
+    virtual void ClearShaderCache() = 0;
+    virtual ShaderProgram* CreateAndLoadNewShader(uint64_t shaderId0, uint64_t shaderId1) = 0;
+    virtual ShaderProgram* LookupShader(uint64_t shaderId0, uint64_t shaderId1) = 0;
     virtual void ShaderGetInfo(ShaderProgram* prg, uint8_t* numInputs, bool usedTextures[2]) = 0;
     virtual uint32_t NewTexture() = 0;
     virtual void SelectTexture(int tile, uint32_t textureId) = 0;
@@ -56,6 +57,11 @@ class GfxRenderingAPI {
     virtual void CopyFramebuffer(int fbDstId, int fbSrcId, int srcX0, int srcY0, int srcX1, int srcY1, int dstX0,
                                  int dstY0, int dstX1, int dstY1) = 0;
     virtual void ClearFramebuffer(bool color, bool depth) = 0;
+    virtual void ClearDepthRegion(int x, int y, int w, int h) {
+        // Default: full depth clear. Backends that support scissored depth clears
+        // (e.g. OpenGL) should override for a more precise partial clear.
+        ClearFramebuffer(false, true);
+    }
     virtual void ReadFramebufferToCPU(int fbId, uint32_t width, uint32_t height, uint16_t* rgba16Buf) = 0;
     virtual void ResolveMSAAColorBuffer(int fbIdTarger, int fbIdSrc) = 0;
     virtual std::unordered_map<std::pair<float, float>, uint16_t, hash_pair_ff>
@@ -67,6 +73,7 @@ class GfxRenderingAPI {
     virtual FilteringMode GetTextureFilter() = 0;
     virtual void SetSrgbMode() = 0;
     virtual ImTextureID GetTextureById(int id) = 0;
+    virtual void SetCurrentPrimDepth(float depth) = 0;
 
   protected:
     int8_t mCurrentDepthTest = 0;
@@ -76,5 +83,7 @@ class GfxRenderingAPI {
     int8_t mLastDepthMask = -1;
     int8_t mLastZmodeDecal = -1;
     bool mSrgbMode = false;
+    float mCurrentPrimDepth = 0.0f;
+    bool mPrimDepthDirty = true;
 };
 } // namespace Fast

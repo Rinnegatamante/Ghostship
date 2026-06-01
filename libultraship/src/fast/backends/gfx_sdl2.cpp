@@ -14,6 +14,11 @@
 #include "ship/window/FileDropMgr.h"
 #include "fast/backends/gfx_sdl.h"
 
+#ifdef __OpenBSD__
+#include <sys/sysctl.h>
+#include <sys/time.h>
+#endif
+
 #if FOR_WINDOWS
 #include <GL/glew.h>
 #include "SDL.h"
@@ -30,6 +35,7 @@
 #endif
 
 #include "ship/window/gui/Gui.h"
+#include "fast/Fast3dGui.h"
 
 #ifdef _WIN32
 #include <WTypesbase.h>
@@ -375,8 +381,17 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
     }
 #endif
 
+#ifdef __OpenBSD__
+    int sysctlname[2] = { CTL_KERN, KERN_CLOCKRATE };
+    struct clockinfo clockinfo;
+    size_t clockinfo_size = sizeof(struct clockinfo);
+    if (sysctl(sysctlname, 2, &clockinfo, &clockinfo_size, NULL, 0) != -1) {
+        mBsdTick = clockinfo.tick;
+    }
+#endif
+
     char title[512];
-    int len = sprintf(title, "%s (%s)", gameName, gfxApiName);
+    int len = snprintf(title, sizeof(title), "%s (%s)", gameName, gfxApiName);
 
 #ifdef __IOS__
     Uint32 flags = SDL_WINDOW_BORDERLESS | SDL_WINDOW_SHOWN;
@@ -401,7 +416,7 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
     SDL_WndProc = SetWindowLongPtr(hwnd, GWLP_WNDPROC, (LONG_PTR)gfx_sdl_wnd_proc);
     SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
 #endif
-    Ship::GuiWindowInitData window_impl;
+    Fast::GuiWindowInitData window_impl;
 
     int display_in_use = SDL_GetWindowDisplayIndex(mWnd);
     if (display_in_use < 0) { // Fallback to default if out of bounds
@@ -442,7 +457,7 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
         window_impl.Metal = { mWnd, mRenderer };
     }
 
-    Ship::Context::GetInstance()->GetWindow()->GetGui()->Init(window_impl);
+    std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetInstance()->GetWindow()->GetGui())->Init(window_impl);
 
     for (size_t i = 0; i < std::size(lus_to_sdl_table); i++) {
         mSdlToLusTable[lus_to_sdl_table[i]] = i;
@@ -536,6 +551,29 @@ void GfxWindowBackendSDL2::GetDimensions(uint32_t* width, uint32_t* height, int3
     SDL_GetWindowPosition(mWnd, static_cast<int*>(posX), static_cast<int*>(posY));
 }
 
+void GfxWindowBackendSDL2::SetDimensions(uint32_t width, uint32_t height, int32_t posX, int32_t posY) {
+    mWindowWidth = width;
+    mWindowHeight = height;
+    if (mWnd) {
+        SDL_SetWindowPosition(mWnd, posX, posY);
+        SDL_SetWindowSize(mWnd, mWindowWidth, mWindowHeight);
+    }
+}
+
+Ship::WindowRect GfxWindowBackendSDL2::GetPrimaryMonitorRect() {
+    SDL_DisplayMode mode;
+    int display_in_use = mWnd ? SDL_GetWindowDisplayIndex(mWnd) : 0;
+    if (display_in_use < 0) {
+        SPDLOG_WARN("Can't detect on which monitor we are. Probably out of display area? ({})", SDL_GetError());
+        display_in_use = 0;
+    }
+    if (SDL_GetDesktopDisplayMode(display_in_use, &mode) >= 0) {
+        return { 0, 0, mode.w, mode.h };
+    }
+    SPDLOG_ERROR("Failed to get SDL Desktop Display Mode: ({})", SDL_GetError());
+    return { 0, 0, 0, 0 };
+}
+
 int GfxWindowBackendSDL2::TranslateScancode(int scancode) const {
     if (scancode < 512) {
         return mSdlToLusTable[scancode];
@@ -583,9 +621,19 @@ void GfxWindowBackendSDL2::OnMouseButtonUp(int btn) const {
 }
 
 void GfxWindowBackendSDL2::HandleSingleEvent(SDL_Event& event) {
-    Ship::WindowEvent event_impl;
+    Fast::WindowEvent event_impl;
     event_impl.Sdl = { &event };
-    Ship::Context::GetInstance()->GetWindow()->GetGui()->HandleWindowEvents(event_impl);
+    auto gui = Ship::Context::GetInstance()->GetWindow()->GetGui();
+    auto fast3dGui = std::dynamic_pointer_cast<Fast::Fast3dGui>(gui);
+    if (fast3dGui) {
+        fast3dGui->HandleWindowEvents(event_impl);
+    } else {
+        static bool sWarnedOnce = false;
+        if (!sWarnedOnce) {
+            SPDLOG_ERROR("gfx_sdl2: Gui is not a Fast3dGui; cannot dispatch window event");
+            sWarnedOnce = true;
+        }
+    }
     switch (event.type) {
 #ifndef TARGET_WEB
         // Scancodes are broken in Emscripten SDL2: https://bugzilla.libsdl.org/show_bug.cgi?id=3259
@@ -714,8 +762,10 @@ void GfxWindowBackendSDL2::SyncFramerateWithTime() const {
     // We want to exit a bit early, so we can busy-wait the rest to never miss the deadline
     left -= 15000UL;
 #elif defined(__APPLE__)
-    // Use macOS scheduler interval on macOS
+    // Use macOS scheduler interval on macOS. Don't trust sysctl on macOS
     left -= 10000UL;
+#elif defined(__OpenBSD__)
+    left -= mBsdTick * 10;
 #endif
     if (left > 0) {
 #ifndef _WIN32
@@ -730,14 +780,13 @@ void GfxWindowBackendSDL2::SyncFramerateWithTime() const {
 #endif
     }
 
-#ifdef _WIN32
     t = qpc_to_100ns(SDL_GetPerformanceCounter());
+#ifdef _WIN32
     while (t < next) {
         YieldProcessor(); // TODO: Find a way for other compilers, OSes and architectures
         t = qpc_to_100ns(SDL_GetPerformanceCounter());
     }
 #endif
-    t = qpc_to_100ns(SDL_GetPerformanceCounter());
     if (left > 0 && t - next < 10000) {
         // In case it takes some time for the application to wake up after sleep,
         // or inaccurate mTimer,

@@ -27,6 +27,7 @@
 
 #include "fast/backends/gfx_screen_config.h"
 #include "ship/window/gui/Gui.h"
+#include "fast/Fast3dGui.h"
 #include "ship/Context.h"
 #include "ship/config/ConsoleVariable.h"
 #include "ship/window/Window.h"
@@ -97,26 +98,96 @@ void GfxRenderingAPIDX11::CreateDepthStencilObjects(uint32_t width, uint32_t hei
         ThrowIfFailed(mDevice->CreateShaderResourceView(texture.Get(), &srv_desc, srv));
     }
 }
-static bool CreateDeviceFunc(class GfxRenderingAPIDX11* self, IDXGIAdapter1* adapter, bool test_only) {
+static bool CreateDeviceFunc(class GfxRenderingAPIDX11* self, bool SoftwareRenderer) {
 #if DEBUG_D3D
     UINT device_creation_flags = D3D11_CREATE_DEVICE_DEBUG;
 #else
     UINT device_creation_flags = 0;
 #endif
-    D3D_FEATURE_LEVEL FeatureLevels[] = { D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0 };
+    bool CreationFailed = false;
+    const char HardwareText[320] = "\nUsing software renderer. Performance issues are to be expected.\n\n"
+                                   "Please check your preferred GPU in Windows graphics or GPU driver settings and "
+                                   "make sure you have the correct GPU drivers installed.\n\n"
+                                   "You can also try to change the graphic backend of the port in its config file.\n"
+                                   "Window->Backend->Id\n"
+                                   "0 = DX11, 1 = OpenGL";
+    const char SoftwareText[33] = "\nUsing software renderer failed.";
 
-    HRESULT res = self->mDX11CreateDevice(adapter,
-                                          D3D_DRIVER_TYPE_UNKNOWN, // since we use a specific adapter
-                                          nullptr, device_creation_flags, FeatureLevels, ARRAYSIZE(FeatureLevels),
-                                          D3D11_SDK_VERSION, test_only ? nullptr : self->mDevice.GetAddressOf(),
-                                          &self->mFeatureLevel, test_only ? nullptr : self->mContext.GetAddressOf());
-
-    if (test_only) {
-        return SUCCEEDED(res);
-    } else {
-        ThrowIfFailed(res, self->mWindowBackend->GetWindowHandle(), "Failed to create D3D11 device.");
-        return true;
+    if (SoftwareRenderer) {
+        SPDLOG_INFO("Using software renderer.");
     }
+
+    HRESULT res = self->mDX11CreateDevice(
+        NULL, SoftwareRenderer ? D3D_DRIVER_TYPE_WARP : D3D_DRIVER_TYPE_HARDWARE, nullptr, device_creation_flags, NULL,
+        NULL, D3D11_SDK_VERSION, self->mDevice.GetAddressOf(), &self->mFeatureLevel, self->mContext.GetAddressOf());
+
+    // Get and log name of adapter
+    IDXGIDevice* DXGIDevice = nullptr;
+    IDXGIAdapter* Adapter = nullptr;
+    DXGI_ADAPTER_DESC adapterDesc;
+    std::wstring adapterName;
+    char adapterNameCStr[128] = "";
+    char error_message[512];
+    HRESULT res2;
+
+    res2 = self->mDevice->QueryInterface(__uuidof(IDXGIDevice), (void**)&DXGIDevice);
+    if (SUCCEEDED(res2)) {
+        res2 = DXGIDevice->GetAdapter(&Adapter);
+        if (SUCCEEDED(res2)) {
+            res2 = Adapter->GetDesc(&adapterDesc);
+            if (SUCCEEDED(res2)) {
+                adapterName = adapterDesc.Description;
+                wcstombs(adapterNameCStr, adapterName.c_str(), 128);
+            }
+            Adapter->Release();
+        }
+        DXGIDevice->Release();
+    }
+    SPDLOG_INFO("Using D3D adapter: {0}", adapterNameCStr);
+
+    if (FAILED(res)) {
+        CreationFailed = true;
+        SPDLOG_WARN("Failed to create a D3D device. HRESULT: 0x{0:08x}", res);
+        snprintf(error_message, sizeof(error_message), "Failed to create a D3D device on %s\nHRESULT: 0x%08X%s",
+                 adapterNameCStr, res, SoftwareRenderer ? SoftwareText : HardwareText);
+    }
+
+    else if (self->mFeatureLevel < D3D_FEATURE_LEVEL_10_0) {
+        CreationFailed = true;
+        SPDLOG_WARN("D3D adapter doesn't support D3D feature level 10_0 or greater.");
+        snprintf(error_message, sizeof(error_message), "%s doesn't support D3D feature level 10_0 or greater.%s",
+                 adapterNameCStr, SoftwareRenderer ? SoftwareText : HardwareText);
+    }
+
+    else if (self->mFeatureLevel < D3D_FEATURE_LEVEL_10_1) {
+        SPDLOG_WARN("D3D adapter doesn't support D3D feature level 10_1 or greater. MSAA setting will be ignored.");
+
+    } else {
+        // Check for Compute Shader support
+        if (self->mDevice != NULL) {
+            D3D11_FEATURE_DATA_D3D10_X_HARDWARE_OPTIONS features;
+            self->mDevice->CheckFeatureSupport(D3D11_FEATURE_D3D10_X_HARDWARE_OPTIONS, &features,
+                                               sizeof(D3D11_FEATURE_DATA_D3D10_X_HARDWARE_OPTIONS));
+            if (features.ComputeShaders_Plus_RawAndStructuredBuffers_Via_Shader_4_x == false) {
+                CreationFailed = true;
+                SPDLOG_WARN("D3D adapter doesn't support compute shaders.");
+                snprintf(error_message, sizeof(error_message), "%s doesn't support compute shaders.%s", adapterNameCStr,
+                         SoftwareRenderer ? SoftwareText : HardwareText);
+            }
+        }
+    }
+
+    if (CreationFailed) {
+        if (self->mContext) {
+            self->mContext->Release();
+        }
+        if (self->mDevice) {
+            self->mDevice->Release();
+        }
+        MessageBoxA(self->mWindowBackend->GetWindowHandle(), error_message, "Warning", MB_OK | MB_ICONWARNING);
+        return false;
+    }
+    return true;
 };
 
 void GfxRenderingAPIDX11::Init() {
@@ -220,6 +291,12 @@ void GfxRenderingAPIDX11::Init() {
     ThrowIfFailed(mDevice->CreateBuffer(&constant_buffer_desc, nullptr, mPerDrawCb.GetAddressOf()),
                   mWindowBackend->GetWindowHandle(), "Failed to create per-draw constant buffer.");
 
+    // Create per-prim-depth constant buffer (G_ZS_PRIM), uploaded only when mPrimDepthDirty
+
+    constant_buffer_desc.ByteWidth = sizeof(PerPrimDepthCB);
+    ThrowIfFailed(mDevice->CreateBuffer(&constant_buffer_desc, nullptr, mPerPrimDepthCb.GetAddressOf()),
+                  mWindowBackend->GetWindowHandle(), "Failed to create per-prim-depth constant buffer.");
+
     // Create compute shader that can be used to retrieve depth buffer values
 
     const char* shader_source = R"(
@@ -261,7 +338,7 @@ void CSMain(uint3 DTid : SV_DispatchThreadID) {
     if (FAILED(hr)) {
         char* err = (char*)error_blob->GetBufferPointer();
         MessageBoxA(mWindowBackend->GetWindowHandle(), err, "Error", MB_OK | MB_ICONERROR);
-        throw hr;
+        throw Ship::HResultException(hr, "Compute shader compilation failed");
     }
 
     ThrowIfFailed(mDevice->CreateComputeShader(cs->GetBufferPointer(), cs->GetBufferSize(), nullptr,
@@ -273,14 +350,14 @@ void CSMain(uint3 DTid : SV_DispatchThreadID) {
     if (FAILED(hr)) {
         char* err = (char*)error_blob->GetBufferPointer();
         MessageBoxA(mWindowBackend->GetWindowHandle(), err, "Error", MB_OK | MB_ICONERROR);
-        throw hr;
+        throw Ship::HResultException(hr, "MSAA compute shader compilation failed");
     }
 
     // Create ImGui
 
-    Ship::GuiWindowInitData window_impl;
+    Fast::GuiWindowInitData window_impl;
     window_impl.Dx11 = { mWindowBackend->GetWindowHandle(), mContext.Get(), mDevice.Get() };
-    Ship::Context::GetInstance()->GetWindow()->GetGui()->Init(window_impl);
+    std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetInstance()->GetWindow()->GetGui())->Init(window_impl);
 }
 
 int GfxRenderingAPIDX11::GetMaxTextureSize() {
@@ -302,7 +379,11 @@ void GfxRenderingAPIDX11::LoadShader(struct ShaderProgram* new_prg) {
     mShaderProgram = (struct ShaderProgramD3D11*)new_prg;
 }
 
-struct ShaderProgram* GfxRenderingAPIDX11::CreateAndLoadNewShader(uint64_t shader_id0, uint32_t shader_id1) {
+void GfxRenderingAPIDX11::ClearShaderCache() {
+    mShaderProgramPool.clear();
+}
+
+struct ShaderProgram* GfxRenderingAPIDX11::CreateAndLoadNewShader(uint64_t shader_id0, uint64_t shader_id1) {
     CCFeatures cc_features;
     gfx_cc_get_features(shader_id0, shader_id1, &cc_features);
 
@@ -330,7 +411,7 @@ struct ShaderProgram* GfxRenderingAPIDX11::CreateAndLoadNewShader(uint64_t shade
     if (FAILED(hr)) {
         char* err = (char*)error_blob->GetBufferPointer();
         MessageBoxA(mWindowBackend->GetWindowHandle(), err, "Error", MB_OK | MB_ICONERROR);
-        throw hr;
+        throw Ship::HResultException(hr, "Vertex shader compilation failed");
     }
 
     hr = mD3dCompile(buf, len, nullptr, nullptr, nullptr, "PSMain", "ps_4_0", compile_flags, 0, ps.GetAddressOf(),
@@ -339,7 +420,7 @@ struct ShaderProgram* GfxRenderingAPIDX11::CreateAndLoadNewShader(uint64_t shade
     if (FAILED(hr)) {
         char* err = (char*)error_blob->GetBufferPointer();
         MessageBoxA(mWindowBackend->GetWindowHandle(), err, "Error", MB_OK | MB_ICONERROR);
-        throw hr;
+        throw Ship::HResultException(hr, "Pixel shader compilation failed");
     }
 
     struct ShaderProgramD3D11* prg = &mShaderProgramPool[std::make_pair(shader_id0, shader_id1)];
@@ -441,7 +522,7 @@ struct ShaderProgram* GfxRenderingAPIDX11::CreateAndLoadNewShader(uint64_t shade
     return (struct ShaderProgram*)(mShaderProgram = prg);
 }
 
-struct ShaderProgram* GfxRenderingAPIDX11::LookupShader(uint64_t shader_id0, uint32_t shader_id1) {
+struct ShaderProgram* GfxRenderingAPIDX11::LookupShader(uint64_t shader_id0, uint64_t shader_id1) {
     auto it = mShaderProgramPool.find(std::make_pair(shader_id0, shader_id1));
     return it == mShaderProgramPool.end() ? nullptr : (struct ShaderProgram*)&it->second;
 }
@@ -477,6 +558,10 @@ static D3D11_TEXTURE_ADDRESS_MODE gfx_cm_to_d3d11(uint32_t val) {
 }
 
 void GfxRenderingAPIDX11::UploadTexture(const uint8_t* rgba32_buf, uint32_t width, uint32_t height) {
+    if (width == 0 || height == 0) {
+        return;
+    }
+
     // Create texture
 
     TextureData* texture_data = &mTextures[mCurrentTextureIds[mCurrentTile]];
@@ -539,6 +624,13 @@ void GfxRenderingAPIDX11::SetSamplerParameters(int tile, bool linear_filter, uin
 void GfxRenderingAPIDX11::SetDepthTestAndMask(bool depth_test, bool depth_mask) {
     mCurrentDepthTest = depth_test;
     mCurrentDepthMask = depth_mask;
+}
+
+void GfxRenderingAPIDX11::SetCurrentPrimDepth(float depth) {
+    if (depth != mCurrentPrimDepth) {
+        mCurrentPrimDepth = depth;
+        mPrimDepthDirty = true;
+    }
 }
 
 void GfxRenderingAPIDX11::SetZmodeDecal(bool zmode_decal) {
@@ -638,6 +730,12 @@ void GfxRenderingAPIDX11::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, siz
 
     for (int i = 0; i < SHADER_MAX_TEXTURES; i++) {
         if (mShaderProgram->usedTextures[i]) {
+            // mTextures is append-only (NewTexture just resizes +1, DeleteTexture is a no-op),
+            // so this is really just catching stale IDs left over from before we zero-initialized
+            // mCurrentTextureIds. No entries are ever removed, so gaps aren't a concern.
+            if (mCurrentTextureIds[i] >= mTextures.size()) {
+                continue;
+            }
             if (mLastResourceViews[i].Get() != mTextures[mCurrentTextureIds[i]].resource_view.Get()) {
                 mLastResourceViews[i] = mTextures[mCurrentTextureIds[i]].resource_view.Get();
                 mContext->PSSetShaderResources(i, 1, mTextures[mCurrentTextureIds[i]].resource_view.GetAddressOf());
@@ -653,18 +751,28 @@ void GfxRenderingAPIDX11::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, siz
                     mLastSamplerStates[i] = mTextures[mCurrentTextureIds[i]].sampler_state.Get();
                 }
             }
+            mContext->PSSetSamplers(i, 1, mTextures[mCurrentTextureIds[i]].sampler_state.GetAddressOf());
         }
-        mContext->PSSetSamplers(i, 1, mTextures[mCurrentTextureIds[i]].sampler_state.GetAddressOf());
     }
 
     // Set per-draw constant buffer
-
     if (textures_changed) {
         D3D11_MAPPED_SUBRESOURCE ms;
         ZeroMemory(&ms, sizeof(D3D11_MAPPED_SUBRESOURCE));
         mContext->Map(mPerDrawCb.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
         memcpy(ms.pData, &mPerDrawCbData, sizeof(PerDrawCB));
         mContext->Unmap(mPerDrawCb.Get(), 0);
+    }
+
+    // G_ZS_PRIM: upload prim_depth cbuffer when it changed
+    if (mPrimDepthDirty) {
+        mPerPrimDepthCbData.prim_depth = mCurrentPrimDepth;
+        D3D11_MAPPED_SUBRESOURCE ms;
+        ZeroMemory(&ms, sizeof(D3D11_MAPPED_SUBRESOURCE));
+        mContext->Map(mPerPrimDepthCb.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
+        memcpy(ms.pData, &mPerPrimDepthCbData, sizeof(PerPrimDepthCB));
+        mContext->Unmap(mPerPrimDepthCb.Get(), 0);
+        mPrimDepthDirty = false;
     }
 
     // Set vertex buffer data
@@ -709,8 +817,8 @@ void GfxRenderingAPIDX11::OnResize() {
 
 void GfxRenderingAPIDX11::StartFrame() {
     // Set per-frame constant buffer
-    ID3D11Buffer* buffers[2] = { mPerFrameCb.Get(), mPerDrawCb.Get() };
-    mContext->PSSetConstantBuffers(0, 2, buffers);
+    ID3D11Buffer* buffers[3] = { mPerFrameCb.Get(), mPerDrawCb.Get(), mPerPrimDepthCb.Get() };
+    mContext->PSSetConstantBuffers(0, 3, buffers);
 
     mPerFrameCbData.noise_frame++;
     if (mPerFrameCbData.noise_frame > 150) {
@@ -752,7 +860,7 @@ void GfxRenderingAPIDX11::UpdateFramebufferParameters(int fb_id, uint32_t width,
 
     width = ((width) > (1U) ? (width) : (1U));
     height = ((height) > (1U) ? (height) : (1U));
-    // We can't use MSAA the way we are using it on Feature Level 10.0 Hardware, so disable it altogether.
+    // We can't use MSAA the way we are using it on feature level 10_0 hardware, so disable it altogether.
     msaa_level = mFeatureLevel < D3D_FEATURE_LEVEL_10_1 ? 1 : msaa_level;
     while (msaa_level > 1 && mMsaaNumQualityLevels[msaa_level - 1] == 0) {
         --msaa_level;
@@ -943,48 +1051,52 @@ void GfxRenderingAPIDX11::ReadFramebufferToCPU(int fb_id, uint32_t width, uint32
     FramebufferDX11& fb = mFrameBuffers[fb_id];
     TextureData& td = mTextures[fb.texture_id];
 
-    ID3D11Texture2D* staging = nullptr;
+    // Query actual texture dimensions — CopyResource requires matching sizes
+    D3D11_TEXTURE2D_DESC srcDesc;
+    td.texture->GetDesc(&srcDesc);
 
-    // Create an staging texture with cpu read access
-    D3D11_TEXTURE2D_DESC texture_desc;
-    texture_desc.Width = width;
-    texture_desc.Height = height;
-    texture_desc.Usage = D3D11_USAGE_STAGING;
-    texture_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    texture_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-    texture_desc.BindFlags = 0;
-    texture_desc.MiscFlags = 0;
-    texture_desc.ArraySize = 1;
-    texture_desc.MipLevels = 1;
-    texture_desc.SampleDesc.Count = 1;
-    texture_desc.SampleDesc.Quality = 0;
+    // Reuse cached staging texture when dimensions match — avoids per-frame CreateTexture2D
+    if (!mReadbackStaging || mReadbackStagingW != srcDesc.Width || mReadbackStagingH != srcDesc.Height) {
+        mReadbackStaging.Reset();
 
-    ThrowIfFailed(mDevice->CreateTexture2D(&texture_desc, nullptr, &staging));
+        D3D11_TEXTURE2D_DESC texture_desc;
+        texture_desc.Width = srcDesc.Width;
+        texture_desc.Height = srcDesc.Height;
+        texture_desc.Usage = D3D11_USAGE_STAGING;
+        texture_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        texture_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        texture_desc.BindFlags = 0;
+        texture_desc.MiscFlags = 0;
+        texture_desc.ArraySize = 1;
+        texture_desc.MipLevels = 1;
+        texture_desc.SampleDesc.Count = 1;
+        texture_desc.SampleDesc.Quality = 0;
+
+        ThrowIfFailed(mDevice->CreateTexture2D(&texture_desc, nullptr, mReadbackStaging.GetAddressOf()));
+        mReadbackStagingW = srcDesc.Width;
+        mReadbackStagingH = srcDesc.Height;
+    }
 
     // Copy the framebuffer texture to the staging texture
-    mContext->CopyResource(staging, td.texture.Get());
+    mContext->CopyResource(mReadbackStaging.Get(), td.texture.Get());
 
     // Map the staging texture to a resource that we can read
     D3D11_MAPPED_SUBRESOURCE resource = {};
-    ThrowIfFailed(mContext->Map(staging, 0, D3D11_MAP_READ, 0, &resource));
+    ThrowIfFailed(mContext->Map(mReadbackStaging.Get(), 0, D3D11_MAP_READ, 0, &resource));
 
     if (!resource.pData) {
+        mContext->Unmap(mReadbackStaging.Get(), 0);
         return;
     }
 
-    // Copy the mapped values to a temp array that we can process later
-    uint32_t* temp = new uint32_t[width * height]();
-    for (size_t i = 0; i < height; i++) {
-        memcpy((uint8_t*)temp + (resource.RowPitch * i), (uint8_t*)resource.pData + (resource.RowPitch * i),
-               resource.RowPitch);
-    }
-
-    mContext->Unmap(staging, 0);
-
-    // Convert the RGBA32 values to RGBA16
-    for (size_t i = 0; i < width; i++) {
-        for (size_t j = 0; j < height; j++) {
-            uint32_t pixel = temp[i + (j * width)];
+    // Convert RGBA32 → RGBA16 with nearest-neighbor scaling from actual texture
+    // dimensions to requested output dimensions, respecting RowPitch for row stride
+    for (uint32_t j = 0; j < height; j++) {
+        uint32_t srcY = j * srcDesc.Height / height;
+        uint8_t* srcRow = (uint8_t*)resource.pData + srcY * resource.RowPitch;
+        for (uint32_t i = 0; i < width; i++) {
+            uint32_t srcX = i * srcDesc.Width / width;
+            uint32_t pixel = ((uint32_t*)srcRow)[srcX];
             uint8_t r = (((pixel & 0xFF) + 4) * 0x1F) / 0xFF;
             uint8_t g = ((((pixel >> 8) & 0xFF) + 4) * 0x1F) / 0xFF;
             uint8_t b = ((((pixel >> 16) & 0xFF) + 4) * 0x1F) / 0xFF;
@@ -994,11 +1106,7 @@ void GfxRenderingAPIDX11::ReadFramebufferToCPU(int fb_id, uint32_t width, uint32
         }
     }
 
-    // Cleanup
-    staging->Release();
-    staging = nullptr;
-
-    delete[] temp;
+    mContext->Unmap(mReadbackStaging.Get(), 0);
 }
 
 void GfxRenderingAPIDX11::SetTextureFilter(FilteringMode mode) {
@@ -1307,6 +1415,7 @@ std::string gfx_direct3d_common_build_shader(size_t& numFloats, const CCFeatures
         { "o_alpha_threshold", cc_features.opt_alpha_threshold },
         { "o_invisible", cc_features.opt_invisible },
         { "o_grayscale", cc_features.opt_grayscale },
+        { "o_prim_depth", cc_features.opt_prim_depth },
         { "o_textures", M_ARRAY(cc_features.usedTextures, bool, 2) },
         { "o_masks", M_ARRAY(cc_features.used_masks, bool, 2) },
         { "o_blend", M_ARRAY(cc_features.used_blend, bool, 2) },
@@ -1327,6 +1436,13 @@ std::string gfx_direct3d_common_build_shader(size_t& numFloats, const CCFeatures
     init->Type = (uint32_t)Ship::ResourceType::Shader;
     init->ByteOrder = Ship::Endianness::Native;
     init->Format = RESOURCE_FORMAT_BINARY;
+    const char* shaderName = Fast::gfx_get_shader(cc_features.shader_id);
+    std::string path = "shaders/directx/default.shader.hlsl";
+
+    if (nullptr != shaderName) {
+        path = std::string(shaderName) + ".hlsl";
+    }
+
     auto res = static_pointer_cast<Ship::Shader>(Ship::Context::GetInstance()->GetResourceManager()->LoadResource(
         "shaders/directx/default.shader.hlsl", true, init));
 
