@@ -1,13 +1,11 @@
 #pragma once
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <stdint.h>
+#include "macros.h"
 
-void PortEnhancements_Register();
-void PortEnhancements_Init();
-void PortEnhancements_Exit();
+extern_s uint8_t textRand[];
+extern_s uint8_t textMarioRando[];
 
-#ifdef __cplusplus
-};
-#endif
+extern_s void PortEnhancements_Register();
+extern_s void PortEnhancements_Init();
+extern_s void PortEnhancements_Exit();

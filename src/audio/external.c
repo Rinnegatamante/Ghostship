@@ -7,12 +7,14 @@
 #include "external.h"
 #include "playback.h"
 #include "synthesis.h"
+#include "effects.h"
 #include "game/level_update.h"
 #include "game/object_list_processor.h"
 #include "game/camera.h"
 #include "seq_ids.h"
 #include "dialog_ids.h"
 #include <lib/src/osAi.h>
+#include <stdio.h>
 
 #if defined(VERSION_EU) || defined(VERSION_SH)
 #define EU_FLOAT(x) x##f
@@ -656,6 +658,7 @@ void create_next_audio_buffer(s16 *samples, u32 num_samples) {
  * Called from threads: thread5_game_loop
  */
 void play_sound(s32 soundBits, f32 *pos) {
+    CALL_CANCELLABLE_RETURN_EVENT(PlaySfxEvent, &soundBits, pos);
     sSoundRequests[sSoundRequestCount].soundBits = soundBits;
     sSoundRequests[sSoundRequestCount].position = pos;
     sSoundRequestCount++;
@@ -1046,6 +1049,45 @@ static f32 get_sound_pan(f32 x, f32 z) {
 }
 
 /**
+ * Calculate surround effect index from Z position (depth relative to camera).
+ * In SM64's coordinate system, positive Z is behind the camera, negative Z is in front.
+ * Uses AUDIO_MAX_DISTANCE for scaling, matching pan and volume distance calculations.
+ * 
+ * Returns:
+ *   0x00 - 0x3F: Sound is in front of camera (0 = far front, 0x3F = at camera)
+ *   0x40 - 0x7F: Sound is behind camera (0x40 = at camera, 0x7F = far behind)
+ *
+ * Called from threads: thread4_sound, thread5_game_loop (EU only)
+ */
+static u8 get_sound_surround_effect_index(f32 z) {
+    f32 absZ;
+    s32 surroundEffectIndex;
+    f32 maxZ = 1000.f;
+
+    absZ = (z < 0 ? -z : z);
+    if (absZ > maxZ) {
+        absZ = maxZ;
+    }
+    
+    // In SM64, positive z means behind the camera
+    if (z > 0.0f) {
+        // Behind camera - surround effect index 0x3F (at camera) to 0x7F (far behind)
+        surroundEffectIndex = (s32)((absZ / maxZ) * 64.0f) + 0x3F;
+        if (surroundEffectIndex > 0x7F) {
+            surroundEffectIndex = 0x7F;
+        }
+    } else {
+        // In front of camera - surround effect index 0x3F (at camera) to 0x00 (far front)
+        surroundEffectIndex = 0x3F - (s32)((absZ / maxZ) * 63.0f);
+        if (surroundEffectIndex < 0) {
+            surroundEffectIndex = 0;
+        }
+    }
+    
+    return (u8)surroundEffectIndex;
+}
+
+/**
  * Called from threads: thread4_sound, thread5_game_loop (EU only)
  */
 static f32 get_sound_volume(u8 bank, u8 soundIndex, f32 volumeRange) {
@@ -1175,6 +1217,7 @@ void audio_signal_game_loop_tick(void) {
     maybe_tick_game_sound();
 #endif
     noop_8031EEC8();
+    CALL_EVENT(AudioUpdateEvent);
 }
 
 /**
@@ -1224,6 +1267,16 @@ static void update_game_sound(void) {
                     // Begin playing the sound
                     gSequencePlayers[SEQ_PLAYER_SFX].channels[channelIndex]->soundScriptIO[4] = soundId;
                     gSequencePlayers[SEQ_PLAYER_SFX].channels[channelIndex]->soundScriptIO[0] = 1;
+
+                    // Set surround effect index based on Z depth when starting sound
+                    if (gSoundMode == SOUND_MODE_SURROUND) {
+                        gSequencePlayers[SEQ_PLAYER_SFX].channels[channelIndex]->surroundEffectIndex =
+                            get_sound_surround_effect_index(*sSoundBanks[bank][soundIndex].z);
+                        // Set comb filter gain based on Y height for vertical positioning
+                        gSequencePlayers[SEQ_PLAYER_SFX].channels[channelIndex]->combFilterGain =
+                            audio_compute_comb_filter(*sSoundBanks[bank][soundIndex].y);
+                        gSequencePlayers[SEQ_PLAYER_SFX].channels[channelIndex]->combFilterSize = 16;
+                    }
 
                     switch (bank) {
                         case SOUND_BANK_MOVING:
@@ -1409,6 +1462,17 @@ static void update_game_sound(void) {
                     // on the same line after preprocessing, and the compiler,
                     // somehow caring about line numbers, makes it not match (it
                     // computes function arguments in the wrong order).
+                    
+                    // Update surround effect index based on Z depth during playback
+                    if (gSoundMode == SOUND_MODE_SURROUND) {
+                        gSequencePlayers[SEQ_PLAYER_SFX].channels[channelIndex]->surroundEffectIndex =
+                            get_sound_surround_effect_index(*sSoundBanks[bank][soundIndex].z);
+                        // Update comb filter gain based on Y height for vertical positioning
+                        gSequencePlayers[SEQ_PLAYER_SFX].channels[channelIndex]->combFilterGain =
+                            audio_compute_comb_filter(*sSoundBanks[bank][soundIndex].y);
+                        gSequencePlayers[SEQ_PLAYER_SFX].channels[channelIndex]->combFilterSize = 0x28;
+                    }
+
                     switch (bank) {
                         case SOUND_BANK_MOVING:
                             if (!(sSoundBanks[bank][soundIndex].soundBits & SOUND_CONSTANT_FREQUENCY)) {
@@ -2180,6 +2244,8 @@ void set_sound_moving_speed(u8 bank, u8 speed) {
 void play_dialog_sound(u8 dialogID) {
     u8 speaker;
 
+    CALL_CANCELLABLE_RETURN_EVENT(PlayDialogSoundEvent, &dialogID);
+
     if (dialogID >= DIALOG_COUNT) {
         dialogID = 0;
     }
@@ -2203,10 +2269,21 @@ void play_dialog_sound(u8 dialogID) {
 #endif
 }
 
+u8 is_sequence_playing(u16 seqId) {
+    int i;
+    for (i = 0; i < sBackgroundMusicQueueSize; i++) {
+        if (sBackgroundMusicQueue[i].seqId == seqId) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 /**
  * Called from threads: thread5_game_loop
  */
 void play_music(u8 player, u16 seqArgs, u16 fadeTimer) {
+    CALL_CANCELLABLE_RETURN_EVENT(PlayMusicEvent, player, &seqArgs, &fadeTimer);
     u8 seqId = seqArgs & 0xff;
     u8 priority = seqArgs >> 8;
     u8 i;
@@ -2232,7 +2309,11 @@ void play_music(u8 player, u16 seqArgs, u16 fadeTimer) {
             if (i == 0) {
                 seq_player_play_sequence(SEQ_PLAYER_LEVEL, seqId, fadeTimer);
             } else if (!gSequencePlayers[SEQ_PLAYER_LEVEL].enabled) {
-                stop_background_music(sBackgroundMusicQueue[0].seqId);
+                s16 seqId = sBackgroundMusicQueue[0].seqId;
+                stop_background_music(seqId);
+                if (seqId == SEQ_LEVEL_BOSS_KOOPA || seqId == SEQ_LEVEL_BOSS_KOOPA_FINAL) {
+                    CALL_EVENT(BossBattleEnded);
+                }
             }
             return;
         }
@@ -2271,6 +2352,8 @@ void play_music(u8 player, u16 seqArgs, u16 fadeTimer) {
 void stop_background_music(u16 seqId) {
     u8 foundIndex;
     u8 i;
+
+    CALL_CANCELLABLE_RETURN_EVENT(StopMusicEvent, &seqId);
 
     if (sBackgroundMusicQueueSize == 0) {
         return;
@@ -2313,6 +2396,7 @@ void stop_background_music(u16 seqId) {
  * Called from threads: thread5_game_loop
  */
 void fadeout_background_music(u16 seqId, u16 fadeOut) {
+    CALL_CANCELLABLE_RETURN_EVENT(FadeoutMusicEvent, &seqId, &fadeOut);
     if (sBackgroundMusicQueueSize != 0 && sBackgroundMusicQueue[0].seqId == (u8)(seqId & 0xff)) {
         seq_player_fade_out(SEQ_PLAYER_LEVEL, fadeOut);
     }
@@ -2373,6 +2457,7 @@ void func_80320ED8(void) {
 void play_secondary_music(u8 seqId, u8 bgMusicVolume, u8 volume, u16 fadeTimer) {
     UNUSED u32 dummy;
 
+    CALL_CANCELLABLE_RETURN_EVENT(PlaySecondaryMusicEvent, &seqId, &bgMusicVolume, &volume, &fadeTimer);
     sUnused80332118 = 0;
     if (sCurrentBackgroundMusicSeqId == 0xff || sCurrentBackgroundMusicSeqId == SEQ_MENU_TITLE_SCREEN) {
         return;
@@ -2537,7 +2622,11 @@ void play_toads_jingle(void) {
 /**
  * Called from threads: thread5_game_loop
  */
+void GameEngine_LockAudioThread(void);
+void GameEngine_UnlockAudioThread(void);
+
 void sound_reset(u8 presetId) {
+    GameEngine_LockAudioThread();
 #ifndef VERSION_JP
     if (presetId >= 8) {
         presetId = 0;
@@ -2566,6 +2655,7 @@ void sound_reset(u8 presetId) {
     D_80332108 = (D_80332108 & 0xf0) + presetId;
     gSoundMode = D_80332108 >> 4;
     sHasStartedFadeOut = FALSE;
+    GameEngine_UnlockAudioThread();
 }
 
 /**

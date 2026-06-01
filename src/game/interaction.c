@@ -1,4 +1,5 @@
 #include <libultra/types.h>
+#include "port/events/list/PlayerEvent.h"
 
 #include "area.h"
 #include "actors/common1.h"
@@ -610,6 +611,8 @@ u32 determine_knockback_action(struct MarioState *m, UNUSED s32 arg) {
         bonkAction = sForwardKnockbackActions[terrainIndex][strengthIndex];
     }
 
+    CALL_EVENT(PlayerKnockback, m, &bonkAction);
+
     return bonkAction;
 }
 
@@ -698,6 +701,7 @@ u32 take_damage_from_interact_object(struct MarioState *m) {
     }
 
     m->hurtCounter += 4 * damage;
+    CALL_EVENT(PlayerHit, m, m->interactObj, damage);
 
 #if ENABLE_RUMBLE
     queue_rumble_data(5, 80);
@@ -741,14 +745,15 @@ void reset_mario_pitch(struct MarioState *m) {
 }
 
 u32 interact_coin(struct MarioState *m, UNUSED u32 interactType, struct Object *o) {
-    m->numCoins += o->oDamageOrCoinValue;
-    m->healCounter += 4 * o->oDamageOrCoinValue;
+    CALL_CANCELLABLE_EVENT(ItemCollected, TYPE_COIN, m, o) {
+        m->numCoins += o->oDamageOrCoinValue;
+        m->healCounter += 4 * o->oDamageOrCoinValue;
 
-    o->oInteractStatus = INT_STATUS_INTERACTED;
-
-    if (COURSE_IS_MAIN_COURSE(gCurrCourseNum) && m->numCoins - o->oDamageOrCoinValue < 100
-        && m->numCoins >= 100) {
-        bhv_spawn_star_no_level_exit(6);
+        o->oInteractStatus = INT_STATUS_INTERACTED;
+    
+        if (COURSE_IS_MAIN_COURSE(gCurrCourseNum) && m->numCoins - o->oDamageOrCoinValue < 100 && m->numCoins >= 100) {
+            bhv_spawn_star_no_level_exit(6);
+        }
     }
 #if ENABLE_RUMBLE
     if (o->oDamageOrCoinValue >= 2) {
@@ -776,58 +781,58 @@ u32 interact_star_or_key(struct MarioState *m, UNUSED u32 interactType, struct O
 #if ENABLE_RUMBLE
         queue_rumble_data(5, 80);
 #endif
-
-        if (!noExit) {
-            m->hurtCounter = 0;
-            m->healCounter = 0;
-            if (m->capTimer > 1) {
-                m->capTimer = 1;
+        CALL_CANCELLABLE_EVENT(ItemCollected, TYPE_STAR, m, o) {
+            if (!noExit) {
+                m->hurtCounter = 0;
+                m->healCounter = 0;
+                if (m->capTimer > 1) {
+                    m->capTimer = 1;
+                }
             }
+
+            if (noExit) {
+                starGrabAction = ACT_STAR_DANCE_NO_EXIT;
+            }
+
+            if (m->action & ACT_FLAG_SWIMMING) {
+                starGrabAction = ACT_STAR_DANCE_WATER;
+            }
+
+            if (m->action & ACT_FLAG_METAL_WATER) {
+                starGrabAction = ACT_STAR_DANCE_WATER;
+            }
+
+            if (m->action & ACT_FLAG_AIR) {
+                starGrabAction = ACT_FALL_AFTER_STAR_GRAB;
+            }
+
+            spawn_object(o, MODEL_NONE, bhvStarKeyCollectionPuffSpawner);
+
+            o->oInteractStatus = INT_STATUS_INTERACTED;
+            m->interactObj = o;
+            m->usedObj = o;
+
+            starIndex = (o->oBehParams >> 24) & 0x1F;
+            save_file_collect_star_or_key(m->numCoins, starIndex);
+
+            m->numStars = save_file_get_total_star_count(gCurrSaveFileNum - 1, COURSE_MIN - 1, COURSE_MAX - 1);
+
+            if (!noExit) {
+                drop_queued_background_music();
+                fadeout_level_music(126);
+            }
+
+            play_sound(SOUND_MENU_STAR_SOUND, m->marioObj->header.gfx.cameraToObject);
+            if (!ROM_JP) {
+                update_mario_sound_and_camera(m);
+            }
+
+            if (grandStar) {
+                return set_mario_action(m, ACT_JUMBO_STAR_CUTSCENE, 0);
+            }
+
+            return set_mario_action(m, starGrabAction, noExit + 2 * grandStar);
         }
-
-        if (noExit) {
-            starGrabAction = ACT_STAR_DANCE_NO_EXIT;
-        }
-
-        if (m->action & ACT_FLAG_SWIMMING) {
-            starGrabAction = ACT_STAR_DANCE_WATER;
-        }
-
-        if (m->action & ACT_FLAG_METAL_WATER) {
-            starGrabAction = ACT_STAR_DANCE_WATER;
-        }
-
-        if (m->action & ACT_FLAG_AIR) {
-            starGrabAction = ACT_FALL_AFTER_STAR_GRAB;
-        }
-
-        spawn_object(o, MODEL_NONE, bhvStarKeyCollectionPuffSpawner);
-
-        o->oInteractStatus = INT_STATUS_INTERACTED;
-        m->interactObj = o;
-        m->usedObj = o;
-
-        starIndex = (o->oBehParams >> 24) & 0x1F;
-        save_file_collect_star_or_key(m->numCoins, starIndex);
-
-        m->numStars =
-            save_file_get_total_star_count(gCurrSaveFileNum - 1, COURSE_MIN - 1, COURSE_MAX - 1);
-
-        if (!noExit) {
-            drop_queued_background_music();
-            fadeout_level_music(126);
-        }
-
-        play_sound(SOUND_MENU_STAR_SOUND, m->marioObj->header.gfx.cameraToObject);
-        if(!ROM_JP) {
-            update_mario_sound_and_camera(m);
-        }
-
-        if (grandStar) {
-            return set_mario_action(m, ACT_JUMBO_STAR_CUTSCENE, 0);
-        }
-
-        return set_mario_action(m, starGrabAction, noExit + 2 * grandStar);
     }
 
     return FALSE;

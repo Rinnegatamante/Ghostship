@@ -40,8 +40,9 @@ void bhv_red_coin_init(void) {
     } else {
         o->parentObj = NULL;
     }
-
-    obj_set_hitbox(o, &sRedCoinHitbox);
+    CALL_CANCELLABLE_EVENT(ModifyObjectBehavior, o, MODEL_RED_COIN) {
+        obj_set_hitbox(o, &sRedCoinHitbox);
+    }
 }
 
 /**

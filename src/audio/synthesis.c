@@ -10,6 +10,7 @@
 #include "external.h"
 #include "sm64.h"
 #include "mixer.h"
+#include "stdio.h"
 
 #define DMEM_ADDR_TEMP 0x0
 #define DMEM_ADDR_RESAMPLED 0x20
@@ -23,6 +24,7 @@
 #define DMEM_ADDR_RIGHT_CH 0x600
 #define DMEM_ADDR_WET_LEFT_CH 0x740
 #define DMEM_ADDR_WET_RIGHT_CH 0x880
+#define DMEM_ADDR_COMB_TEMP 0x9C0
 
 #define aSetLoadBufferPair(pkt, c, off)                                                                \
     aSetBuffer(pkt, 0, c + DMEM_ADDR_WET_LEFT_CH, 0, DEFAULT_LEN_1CH - c);                             \
@@ -62,6 +64,7 @@ u64 *process_envelope_inner(u64 *cmd, struct Note *note, s32 nSamples, u16 inBuf
                             s32 headsetPanSettings, struct VolumeChange *vol);
 u64 *note_apply_headset_pan_effects(u64 *cmd, struct Note *note, s32 bufLen, s32 flags, s32 leftRight);
 #endif
+u64 *note_apply_surround_effect(u64 *cmd, struct Note *note, s32 bufLen);
 
 #ifdef VERSION_EU
 struct SynthesisReverb gSynthesisReverbs[4];
@@ -764,6 +767,57 @@ u64 *synthesis_process_notes(s16 *aiBuf, s32 bufLen, u64 *cmd) {
                 endPos = loopInfo->end;
                 sampleAddr = audioBookSample->sampleAddr;
                 resampledTempLen = 0;
+
+                // [Port] [Custom audio] CODEC_S16: raw 16-bit PCM — bypass ADPCM machinery
+                if (audioBookSample->codec == CODEC_S16) {
+                    size_t totalFrames = (size_t)audioBookSample->numFrames;
+#ifdef VERSION_EU
+                    s32 samplePos = synthesisState->samplePosInt;
+#else
+                    s32 samplePos = note->samplePosInt;
+#endif
+                    samplesLenAdjusted = samplesLenFixedPoint >> 0x10;
+                    u8 s16Muted = 0;
+#ifndef VERSION_EU
+                    if (note->parentLayer != NO_LAYER) {
+                        struct SequenceChannel *s16Ch = note->parentLayer->seqChannel;
+                        if (s16Ch != NULL && s16Ch->seqPlayer != NULL) {
+                            s16Muted = s16Ch->seqPlayer->muted;
+                        }
+                    }
+#endif
+                    aClearBuffer(cmd++, DMEM_ADDR_UNCOMPRESSED_NOTE, (samplesLenAdjusted + 0x10) * 2);
+                    if (!s16Muted && sampleAddr != NULL && totalFrames > 0 && samplePos < (s32)totalFrames) {
+                        s32 samplesRemaining = (s32)totalFrames - samplePos;
+                        s32 toLoad = samplesRemaining < samplesLenAdjusted ? samplesRemaining : samplesLenAdjusted;
+                        aSetBuffer(cmd++, 0, DMEM_ADDR_UNCOMPRESSED_NOTE, 0, (u32)toLoad * 2);
+                        aLoadBuffer(cmd++, VIRTUAL_TO_PHYSICAL2(sampleAddr + (size_t)samplePos * 2));
+                        samplePos += toLoad;
+                        if (samplePos >= (s32)totalFrames) {
+                            if (loopInfo->count != 0) {
+                                samplePos = loopInfo->start;
+                            } else {
+#ifdef VERSION_EU
+                                noteSubEu->finished = 1;
+                                note->noteSubEu.finished = 1;
+                                note->noteSubEu.enabled = 0;
+#else
+                                note->samplePosInt = 0;
+                                note->finished = 1;
+                                note->enabled = 0;
+#endif
+                            }
+                        }
+#ifdef VERSION_EU
+                        synthesisState->samplePosInt = samplePos;
+#else
+                        note->samplePosInt = samplePos;
+#endif
+                    }
+                    noteSamplesDmemAddrBeforeResampling = DMEM_ADDR_UNCOMPRESSED_NOTE;
+                    goto s16_done;
+                }
+
                 for (curPart = 0; curPart < nParts; curPart++) {
                     nAdpcmSamplesProcessed = 0; // s8
                     s5 = 0;                     // s4
@@ -1013,21 +1067,23 @@ u64 *synthesis_process_notes(s16 *aiBuf, s32 bufLen, u64 *cmd) {
                                     break;
 
                                 case 1:
-                                    aSetBuffer(cmd++, 0, DMEM_ADDR_UNCOMPRESSED_NOTE + sp130,
-                                               DMEM_ADDR_RESAMPLED2,
-                                               samplesLenAdjusted + 8);
 #ifdef VERSION_EU
                                     aResample(cmd++, A_INIT, 0xff60,
                                               VIRTUAL_TO_PHYSICAL2(
                                                   synthesisState->synthesisBuffers->dummyResampleState));
 #else
-                                    aResample(cmd++, A_INIT, 0xff60,
+                                    if (note->synthesisBuffers != NULL) {
+                                        aSetBuffer(cmd++, 0, DMEM_ADDR_UNCOMPRESSED_NOTE + sp130,
+                                               DMEM_ADDR_RESAMPLED2,
+                                               samplesLenAdjusted + 8);
+                                        aResample(cmd++, A_INIT, 0xff60,
                                               VIRTUAL_TO_PHYSICAL2(
                                                   note->synthesisBuffers->dummyResampleState));
-#endif
-                                    aDMEMMove(cmd++, DMEM_ADDR_RESAMPLED2 + 4,
+                                        aDMEMMove(cmd++, DMEM_ADDR_RESAMPLED2 + 4,
                                               DMEM_ADDR_RESAMPLED + resampledTempLen,
                                               samplesLenAdjusted + 4);
+                                    }
+#endif
                                     break;
                             }
                     }
@@ -1041,6 +1097,7 @@ u64 *synthesis_process_notes(s16 *aiBuf, s32 bufLen, u64 *cmd) {
                     }
                 }
             }
+            s16_done:;
 
             flags = 0;
 
@@ -1060,6 +1117,60 @@ u64 *synthesis_process_notes(s16 *aiBuf, s32 bufLen, u64 *cmd) {
 
             cmd = final_resample(cmd, note, bufLen * 2, resamplingRateFixedPoint,
                                  noteSamplesDmemAddrBeforeResampling, flags);
+#endif
+
+            // Apply comb filter for surround height effect (after resampling, before envelope)
+            // Only applies to stereoHeadsetEffects notes in surround mode
+#ifdef VERSION_EU
+            if (noteSubEu->stereoHeadsetEffects && (note->combFilterSize != 0) && (note->combFilterGain != 0) && gSoundMode == SOUND_MODE_SURROUND) {
+                s16 *combFilterState = synthesisState->synthesisBuffers->combFilterState;
+                u16 combFilterDmem;
+                // Copy mono signal to comb temp buffer
+                aDMEMMove(cmd++, DMEM_ADDR_TEMP, DMEM_ADDR_COMB_TEMP, bufLen * 2);
+                combFilterDmem = DMEM_ADDR_COMB_TEMP - note->combFilterSize;
+                if (synthesisState->combFilterNeedsInit) {
+                    aClearBuffer(cmd++, combFilterDmem, note->combFilterSize);
+                    synthesisState->combFilterNeedsInit = FALSE;
+                } else {
+                    aSetBuffer(cmd++, 0, combFilterDmem, 0, note->combFilterSize);
+                    aLoadBuffer(cmd++, VIRTUAL_TO_PHYSICAL2(combFilterState));
+                }
+                // Save current tail samples as new state for next iteration
+                aSetBuffer(cmd++, 0, 0, DMEM_ADDR_TEMP + (bufLen * 2) - note->combFilterSize, note->combFilterSize);
+                aSaveBuffer(cmd++, VIRTUAL_TO_PHYSICAL2(combFilterState));
+                // Mix delayed signal back (creates comb filter effect)
+                aSetBuffer(cmd++, 0, 0, 0, bufLen * 2);
+                aMix(cmd++, 0, note->combFilterGain, DMEM_ADDR_COMB_TEMP, combFilterDmem);
+                // Copy result back to temp buffer
+                aDMEMMove(cmd++, combFilterDmem, DMEM_ADDR_TEMP, bufLen * 2);
+            } else {
+                synthesisState->combFilterNeedsInit = TRUE;
+            }
+#else
+            if (note->stereoHeadsetEffects && note->combFilterSize != 0 && note->combFilterGain != 0 && gSoundMode == SOUND_MODE_SURROUND) {
+                s16 *combFilterState = note->synthesisBuffers->combFilterState;
+                u16 combFilterDmem;
+                // Copy mono signal to comb temp buffer
+                aDMEMMove(cmd++, DMEM_ADDR_TEMP, DMEM_ADDR_COMB_TEMP, bufLen * 2);
+                combFilterDmem = DMEM_ADDR_COMB_TEMP - note->combFilterSize;
+                if (note->combFilterNeedsInit) {
+                    aClearBuffer(cmd++, combFilterDmem, note->combFilterSize);
+                    note->combFilterNeedsInit = FALSE;
+                } else {
+                    aSetBuffer(cmd++, 0, combFilterDmem, 0, note->combFilterSize);
+                    aLoadBuffer(cmd++, VIRTUAL_TO_PHYSICAL2(combFilterState));
+                }
+                // Save current tail samples as new state for next iteration
+                aSetBuffer(cmd++, 0, 0, DMEM_ADDR_TEMP + (bufLen * 2) - note->combFilterSize, note->combFilterSize);
+                aSaveBuffer(cmd++, VIRTUAL_TO_PHYSICAL2(combFilterState));
+                // Mix delayed signal back (creates comb filter effect)
+                aSetBuffer(cmd++, 0, 0, 0, bufLen * 2);
+                aMix(cmd++, 0, note->combFilterGain, DMEM_ADDR_COMB_TEMP, combFilterDmem);
+                // Copy result back to temp buffer
+                aDMEMMove(cmd++, combFilterDmem, DMEM_ADDR_TEMP, bufLen * 2);
+            } else {
+                note->combFilterNeedsInit = TRUE;
+            }
 #endif
 
 #ifdef VERSION_EU
@@ -1090,6 +1201,17 @@ u64 *synthesis_process_notes(s16 *aiBuf, s32 bufLen, u64 *cmd) {
 #else
             if (note->usesHeadsetPanEffects) {
                 cmd = note_apply_headset_pan_effects(cmd, note, bufLen * 2, flags, leftRight);
+            }
+#endif
+
+            // Apply surround effect when in surround mode (only for sounds with stereo effects)
+#ifdef VERSION_EU
+            if (noteSubEu->stereoHeadsetEffects && gSoundMode == SOUND_MODE_SURROUND) {
+                cmd = note_apply_surround_effect(cmd, note, bufLen * 2);
+            }
+#else
+            if (note->stereoHeadsetEffects && gSoundMode == SOUND_MODE_SURROUND) {
+                cmd = note_apply_surround_effect(cmd, note, bufLen * 2);
             }
 #endif
         }
@@ -1433,6 +1555,69 @@ u64 *note_apply_headset_pan_effects(u64 *cmd, struct Note *note, s32 bufLen, s32
     return cmd;
 }
 
+/**
+ * Apply surround sound effect using matrix encoding based on depth position.
+ * Uses surroundEffectIndex (0x00-0x7F) calculated from Z position:
+ *   0x00-0x3F: Sound in front (0 = far front, 0x3F = at camera) - less rear effect
+ *   0x40-0x7F: Sound behind (0x40 = at camera, 0x7F = far behind) - more rear effect
+ * 
+ * This creates a rear channel effect by phase-inverting and mixing based on pan and depth.
+ */
+u64 *note_apply_surround_effect(u64 *cmd, struct Note *note, s32 bufLen) {
+    s16 dryGain;
+    s32 wetGain;
+    f32 depthFactor;
+    u8 surroundIdx = note->surroundEffectIndex;
+
+    // Calculate depth factor: how much rear channel to add
+    // surroundEffectIndex: 0 = front, 0x3F = at camera, 0x7F = far behind
+    // We want sounds behind the camera to have stronger rear channel effect
+    depthFactor = (f32)surroundIdx / 127.0f;
+
+    // Convert u8 pan (0=left, 128=center, 255=right) to float (0.0-1.0)
+    f32 panPosition = (f32)note->pan / 255.0f;
+
+    // Calculate base gain from current volume and depth
+    dryGain = note->curVolLeft > note->curVolRight ? note->curVolLeft : note->curVolRight;
+    dryGain = (s16)(dryGain * depthFactor); // Scale by depth
+    dryGain = dryGain >> 2; // Scale down for subtle effect
+    if (dryGain > 0x1800) {
+        dryGain = 0x1800; // Limit surround intensity
+    }
+
+    // Skip if gain is too low
+    if (dryGain < 0x100) {
+        return cmd;
+    }
+
+    // Matrix surround encoding: steer surround based on pan
+    // The idea: add out-of-phase content to create width/depth
+    // Left-panned sounds get positive left, negative right (spreads to rear left)
+    // Right-panned sounds get negative left, positive right (spreads to rear right)
+    s16 leftGain = (s16)(dryGain * (1.0f - panPosition));
+    s16 rightGain = (s16)(dryGain * panPosition);
+
+    // Mix surround contribution into channels
+    // Left channel gets positive surround from left-panned content
+    aSetBuffer(cmd++, 0, 0, 0, bufLen);
+    aMix(cmd++, 0, leftGain, DMEM_ADDR_LEFT_CH, DMEM_ADDR_LEFT_CH);
+
+    // Right channel gets phase-inverted surround contribution for matrix encoding
+    aMix(cmd++, 0, (s16)(rightGain ^ 0xFFFF), DMEM_ADDR_RIGHT_CH, DMEM_ADDR_RIGHT_CH);
+
+    // Apply to wet (reverb) channels for consistent spatialization
+    wetGain = (dryGain * note->reverbVol) >> 7;
+    if (wetGain > 0) {
+        s16 wetLeftGain = (s16)(wetGain * (1.0f - panPosition));
+        s16 wetRightGain = (s16)(wetGain * panPosition);
+
+        aMix(cmd++, 0, wetLeftGain, DMEM_ADDR_WET_LEFT_CH, DMEM_ADDR_WET_LEFT_CH);
+        aMix(cmd++, 0, (s16)(wetRightGain ^ 0xFFFF), DMEM_ADDR_WET_RIGHT_CH, DMEM_ADDR_WET_RIGHT_CH);
+    }
+
+    return cmd;
+}
+
 #ifndef VERSION_EU
 // Moved to playback.c in EU
 
@@ -1445,12 +1630,21 @@ void note_init_volume(struct Note *note) {
     note->curVolLeft = 1;
     note->curVolRight = 1;
     note->frequency = 0.0f;
+    note->surroundEffectIndex = 0;
+    note->pan = 128; // Center pan
+    note->combFilterGain = 0;
+    note->combFilterSize = 0;
+    note->combFilterNeedsInit = TRUE;
 }
 
 void note_set_vel_pan_reverb(struct Note *note, f32 velocity, f32 pan, u8 reverbVol) {
     s32 panIndex;
     f32 volLeft;
     f32 volRight;
+    
+    // Store pan as u8 (0=left, 128=center, 255=right) for surround effect
+    note->pan = (u8)(pan * 255.0f);
+    
     // Anding with 127 avoids out-of-bounds reads when pan is outside of [0, 1].
     // This can occur during PU movement -- see the bug comment in get_sound_pan
     // in external.c. An out-of-bounds read by itself doesn't crash, but if the
@@ -1496,6 +1690,25 @@ void note_set_vel_pan_reverb(struct Note *note, f32 velocity, f32 pan, u8 reverb
     } else if (gSoundMode == SOUND_MODE_MONO) {
         volLeft = .707f;
         volRight = .707f;
+    } else if (note->stereoHeadsetEffects && gSoundMode == SOUND_MODE_SURROUND) {
+        // TEMPORARY: Surround mode behaves like stereo to test if glitch persists
+        u8 strongLeft;
+        u8 strongRight;
+        strongLeft = FALSE;
+        strongRight = FALSE;
+        note->headsetPanLeft = 0;
+        note->headsetPanRight = 0;
+        note->usesHeadsetPanEffects = FALSE;
+        volLeft = gStereoPanVolume[panIndex];
+        volRight = gStereoPanVolume[127 - panIndex];
+        // Use same thresholds as stereo (0x20/0x60)
+        if (panIndex < 0x20) {
+            strongLeft = TRUE;
+        } else if (panIndex > 0x60) {
+            strongRight = TRUE;
+        }
+        note->stereoStrongRight = strongRight;
+        note->stereoStrongLeft = strongLeft;
     } else {
         volLeft = gDefaultPanVolume[panIndex];
         volRight = gDefaultPanVolume[127 - panIndex];

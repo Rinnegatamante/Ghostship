@@ -114,6 +114,7 @@ void king_whomp_chase(void) {
     if (mario_is_far_below_object(1000.0f)) {
         o->oAction = 0;
         stop_background_music(SEQUENCE_ARGS(4, SEQ_EVENT_BOSS));
+        CALL_EVENT(BossBattleEnded);
     }
 }
 
@@ -239,16 +240,18 @@ void whomp_die(void) {
     if (o->oBehParams2ndByte != 0) {
         if (cur_obj_update_dialog_with_cutscene(MARIO_DIALOG_LOOK_UP, 
             DIALOG_FLAG_TEXT_DEFAULT, CUTSCENE_DIALOG, DIALOG_115)) {
-            obj_set_angle(o, 0, 0, 0);
-            cur_obj_hide();
-            cur_obj_become_intangible();
-            spawn_mist_particles_variable(0, 0, 200.0f);
-            spawn_triangle_break_particles(20, MODEL_DIRT_ANIMATION, 3.0f, 4);
-            cur_obj_shake_screen(SHAKE_POS_SMALL);
-            o->oPosY += 100.0f;
-            spawn_default_star(180.0f, 3880.0f, 340.0f);
-            cur_obj_play_sound_2(SOUND_OBJ_KING_WHOMP_DEATH);
-            o->oAction = 9;
+            CALL_CANCELLABLE_EVENT(BossDefeated, o, BOSS_TYPE_KING_WHOMP) {
+                obj_set_angle(o, 0, 0, 0);
+                cur_obj_hide();
+                cur_obj_become_intangible();
+                spawn_mist_particles_variable(0, 0, 200.0f);
+                spawn_triangle_break_particles(20, MODEL_DIRT_ANIMATION, 3.0f, 4);
+                cur_obj_shake_screen(SHAKE_POS_SMALL);
+                o->oPosY += 100.0f;
+                spawn_default_star(180.0f, 3880.0f, 340.0f);
+                cur_obj_play_sound_2(SOUND_OBJ_KING_WHOMP_DEATH);
+                o->oAction = 9;
+            };
         }
     } else {
         spawn_mist_particles_variable(0, 0, 100.0f);
@@ -262,6 +265,7 @@ void whomp_die(void) {
 void king_whomp_stop_music(void) {
     if (o->oTimer == 60) {
         stop_background_music(SEQUENCE_ARGS(4, SEQ_EVENT_BOSS));
+        CALL_EVENT(BossBattleEnded);
     }
 }
 

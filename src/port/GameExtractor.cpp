@@ -10,7 +10,6 @@
 #include <unordered_map>
 #include <fstream>
 
-#include "Companion.h"
 #include "ship/Context.h"
 #include "spdlog/spdlog.h"
 #include <port/Engine.h>
@@ -22,6 +21,9 @@
 #include <unistd.h>
 #endif
 
+#if !defined(__SWITCH__) && !defined(__vita__)
+#include "Companion.h"
+
 #if !defined(__IOS__) && !defined(__ANDROID__) && !defined(__SWITCH__) && !defined(__vita__)
 #include "portable-file-dialogs.h"
 #endif
@@ -31,84 +33,49 @@ std::unordered_map<std::string, std::string> mGameList = {
     { "9bef1128717f958171a4afac3ed78ee2bb4e86ce", "Super Mario 64 (US)" },
 };
 
-bool GameExtractor::SelectGameFromUI() {
-    std::vector<std::string> roms;
-    GetRoms(roms);
+static std::filesystem::path Utf8ToFsPath(const std::string& utf8) {
+    return std::filesystem::path(reinterpret_cast<const char8_t*>(utf8.c_str()));
+}
 
-    bool foundGame = false;
-
+bool GameExtractor::RunStandalone(std::string rom) {
     // Store both path and already-read data
     std::string romPath;
     std::vector<uint8_t> romData;
 
-    // Auto detect first baserom with valid hash
-    for (const auto& rom : roms) {
-        if (!std::filesystem::exists(rom))
-            continue;
-
-        std::ifstream inFile(rom, std::ios::binary);
-        if (!inFile.is_open()) {
-            SPDLOG_INFO("Failed to open ROM at path: {}, continuing", rom);
-            continue;
-        }
-
-        inFile.seekg(0, std::ios::end);
-        size_t fileSize = inFile.tellg();
-        inFile.seekg(0, std::ios::beg);
-
-        std::vector<uint8_t> data(fileSize);
-        if (!inFile.read(reinterpret_cast<char*>(data.data()), fileSize)) {
-            SPDLOG_INFO("Failed to read ROM at path: {}, continuing", rom);
-            continue;
-        }
-
-        inFile.close();
-        std::string hash = Companion::CalculateHash(data);
-
-        if (mGameList.find(hash) != mGameList.end()) {
-            romPath = rom;
-            romData = std::move(data);
-            foundGame = true;
-            break;
-        }
-    }
-
-#if !defined(__IOS__) && !defined(__ANDROID__) && !defined(__SWITCH__) && !defined(__vita__)
-    // Desktop: fallback to file dialogue if no baserom found
-    if (!foundGame) {
-        if (!pfd::settings::available()) {
-            SPDLOG_ERROR("portable-file-dialogs is not available on this system.");
-            return false;
-        }
-
-        auto selection = pfd::open_file("Select a file", ".", { "N64 Roms", "*.z64" }).result();
-        if (selection.empty())
-            return false;
-
-        romPath = selection[0];
-    }
-#else
-    // Mobile: fallback to baserom.us.z64
-    if (!foundGame && !std::filesystem::exists(Ship::Context::GetPathRelativeToAppDirectory("baserom.us.z64"))) {
-        SPDLOG_ERROR("baserom not found");
+    if (!std::filesystem::exists(rom)) {
         return false;
     }
 
-    if (!foundGame) {
-        romPath = Ship::Context::GetPathRelativeToAppDirectory("baserom.us.z64");
+    std::ifstream inFile(rom, std::ios::binary);
+    if (!inFile.is_open()) {
+        SPDLOG_INFO("Failed to open ROM at path: {}, continuing", rom);
+        return false;
     }
-#endif
+
+    inFile.seekg(0, std::ios::end);
+    size_t fileSize = inFile.tellg();
+    inFile.seekg(0, std::ios::beg);
+
+    std::vector<uint8_t> data(fileSize);
+    if (!inFile.read(reinterpret_cast<char*>(data.data()), fileSize)) {
+        SPDLOG_INFO("Failed to read ROM at path: {}, continuing", rom);
+        return false;
+    }
+
+    inFile.close();
+    std::string hash = Companion::CalculateHash(data);
+
+    if (mGameList.find(hash) != mGameList.end()) {
+        romPath = rom;
+        romData = std::move(data);
+    }
 
     // Load file if it is not already open
     if (romData.empty()) {
-        if (!std::filesystem::exists(romPath)) {
-            SPDLOG_ERROR("Failed to find ROM at path: {}", romPath);
+        std::ifstream inFile(romPath, std::ios::binary);
+        if (!inFile.is_open()) {
             return false;
         }
-
-        std::ifstream inFile(romPath, std::ios::binary);
-        if (!inFile.is_open())
-            return false;
 
         romData = std::vector<uint8_t>(std::istreambuf_iterator<char>(inFile), {});
         inFile.close();
@@ -120,17 +87,78 @@ bool GameExtractor::SelectGameFromUI() {
     return true;
 }
 
+bool GameExtractor::SelectGameFromUI() {
+    //// Store both path and already-read data
+    std::string romPath;
+    std::vector<uint8_t> romData;
+
+#if !defined(__IOS__) && !defined(__ANDROID__) && !defined(__SWITCH__) && !defined(__vita__)
+    // Desktop: fallback to file dialogue if no baserom found
+    // if (!foundGame) {
+    if (!pfd::settings::available()) {
+        SPDLOG_ERROR("portable-file-dialogs is not available on this system.");
+        return false;
+    }
+
+    auto selection = pfd::open_file("Select a file", ".", { "N64 Roms", "*.z64" }).result();
+    if (selection.empty()) {
+        return false;
+    }
+
+    romPath = selection[0];
+    //}
+#else
+    // Mobile: fallback to baserom.us.z64
+    if (/*!foundGame && */ !std::filesystem::exists(Ship::Context::GetPathRelativeToAppDirectory("baserom.us.z64"))) {
+        SPDLOG_ERROR("baserom not found");
+        return false;
+    }
+
+    // if (!foundGame) {
+    romPath = Ship::Context::GetPathRelativeToAppDirectory("baserom.us.z64");
+    //}
+#endif
+
+    // Load file if it is not already open
+    if (romData.empty()) {
+        const std::filesystem::path romFsPath = Utf8ToFsPath(romPath);
+        if (!std::filesystem::exists(romFsPath)) {
+            SPDLOG_ERROR("Failed to find ROM at path: {}", romPath);
+            return false;
+        }
+
+        std::ifstream inFile(romFsPath, std::ios::binary);
+        if (!inFile.is_open()) {
+            return false;
+        }
+
+        romData = std::vector<uint8_t>(std::istreambuf_iterator<char>(inFile), {});
+        inFile.close();
+    }
+
+    this->mGamePath = romPath;
+    this->mGameData = std::move(romData);
+
+    return true;
+}
+
+void GameExtractor::SetSearchPath(const std::string& path) {
+    mSearchPath = path;
+}
+
 void GameExtractor::GetRoms(std::vector<std::string>& roms) {
 #ifdef _WIN32
     WIN32_FIND_DATAA ffd;
-    HANDLE h = FindFirstFileA(".\\*", &ffd);
+    std::string search = std::string(mSearchPath + "\\*");
+    HANDLE h = FindFirstFileA(search.c_str(), &ffd);
 
     do {
         if (!(ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
             char* ext = PathFindExtensionA(ffd.cFileName);
 
             // Check for any standard N64 rom file extensions.
-            if ((strcmp(ext, ".z64") == 0))
+            if (ext != NULL &&
+                (strcmp(ext, ".z64") == 0) /* || (strcmp(ext, ".n64") == 0) || (strcmp(ext, ".v64") == 0)*/)
                 roms.push_back(ffd.cFileName);
         }
     } while (FindNextFileA(h, &ffd) != 0);
@@ -139,7 +167,7 @@ void GameExtractor::GetRoms(std::vector<std::string>& roms) {
     //}
 #elif unix
     // Open the directory of the app.
-    DIR* d = opendir(".");
+    DIR* d = opendir(mSearchPath.c_str());
     struct dirent* dir;
 
     if (d != NULL) {
@@ -147,29 +175,28 @@ void GameExtractor::GetRoms(std::vector<std::string>& roms) {
         while ((dir = readdir(d)) != NULL) {
             struct stat path;
 
-            auto fullPath = std::filesystem::path(".") / dir->d_name;
-            auto fullPathString = fullPath.string();
-            const char* fullPathCStr = fullPathString.c_str();
-
             // Check if current entry is not folder
-            stat(fullPathCStr, &path);
+            stat(dir->d_name, &path);
             if (S_ISREG(path.st_mode)) {
 
                 // Get the position of the extension character.
                 char* ext = strrchr(dir->d_name, '.');
-                if (ext != NULL && (strcmp(ext, ".z64") == 0)) {
-                    roms.push_back(fullPathCStr);
+                if (ext != NULL &&
+                    (strcmp(ext, ".z64") == 0 /* || strcmp(ext, ".n64") == 0 || strcmp(ext, ".v64") == 0*/)) {
+                    roms.push_back(dir->d_name);
                 }
             }
         }
     }
     closedir(d);
 #else
-    for (const auto& file : std::filesystem::directory_iterator(".")) {
-        if (file.is_directory())
+    for (const auto& file : std::filesystem::directory_iterator(mSearchPath)) {
+        if (file.is_directory()) {
             continue;
-        if (file.path().extension() == ".z64") {
-            roms.push_back((file.path()));
+        }
+        if (/*(file.path().extension() == ".n64") || */(file.path().extension() == ".z64")/* ||
+            (file.path().extension() == ".v64")*/) {
+            roms.push_back((file.path().generic_string()));
         }
     }
 #endif
@@ -191,9 +218,9 @@ void GameExtractor::WritePortVersion() {
     auto writer = LUS::BinaryWriter();
     writer.SetEndianness(Torch::Endianness::Big);
 #ifdef __vita__
-    writer.Write((uint16_t)1);
-    writer.Write((uint16_t)0);
     writer.Write((uint16_t)2);
+    writer.Write((uint16_t)0);
+    writer.Write((uint16_t)0);
 #else
     writer.Write((uint16_t)gBuildVersionMajor);
     writer.Write((uint16_t)gBuildVersionMinor);
@@ -204,14 +231,18 @@ void GameExtractor::WritePortVersion() {
     Companion::Instance->RegisterCompanionFile("portVersion", writer.ToVector());
 }
 
-bool GameExtractor::GenerateOTR() {
+std::string GameExtractor::GetRomPath() {
+    return mGamePath.generic_string();
+}
+
+bool GameExtractor::Parse(std::atomic<size_t>& totalAssets, std::string appShortName) {
     const std::string assets_path = Ship::Context::GetAppBundlePath();
-    const std::string game_path = Ship::Context::GetAppDirectoryPath();
+    const std::string game_path = Ship::Context::GetAppDirectoryPath(appShortName);
 
     Companion::Instance = new Companion(this->mGameData, ArchiveType::O2R, false, assets_path, game_path);
-    this->WritePortVersion();
+    Companion::Instance->SetProcess(false);
     try {
-        Companion::Instance->Init(ExportType::Binary);
+        Companion::Instance->Init(ExportType::Binary, totalAssets);
     } catch (const std::exception& e) {
         SPDLOG_INFO("Failed to process O2R {}", e.what());
         return false;
@@ -219,3 +250,53 @@ bool GameExtractor::GenerateOTR() {
 
     return true;
 }
+
+bool GameExtractor::GenerateOTR(std::string appShortName) {
+    std::atomic<size_t> assetCount{ 0 };
+    return GenerateOTR(assetCount, appShortName);
+}
+
+bool GameExtractor::GenerateOTR(std::atomic<size_t>& assetCount, std::string appShortName) {
+    const std::string assets_path = Ship::Context::GetAppBundlePath();
+    const std::string game_path = Ship::Context::GetAppDirectoryPath(appShortName);
+
+    Companion::Instance = new Companion(this->mGameData, ArchiveType::O2R, false, assets_path, game_path);
+    this->WritePortVersion();
+    try {
+        Companion::Instance->Init(ExportType::Binary, assetCount);
+    } catch (const std::exception& e) {
+        SPDLOG_INFO("Failed to process O2R {}", e.what());
+        return false;
+    }
+
+    return true;
+}
+#else
+static bool GameExtractor::GenAssetFile() {
+    return false;
+}
+
+std::optional<std::string> GameExtractor::ValidateChecksum() const {
+    return std::nullopt;
+}
+
+bool GameExtractor::SelectGameFromUI() {
+    return false;
+}
+
+void GameExtractor::GetRoms(std::vector<std::string>& roms) {
+    // None
+}
+
+bool GameExtractor::GenerateOTR(std::string appShortName) {
+    return false;
+}
+
+bool GameExtractor::GenerateOTR(std::atomic<size_t>& assetCount, std::string appShortName) {
+    return false;
+}
+
+void GameExtractor::WritePortVersion() {
+    // None
+}
+#endif

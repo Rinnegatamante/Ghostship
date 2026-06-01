@@ -34,7 +34,7 @@
 #include "sound_init.h"
 #include "rumble_init.h"
 
-#include "port/hooks/list/PlayerEvent.h"
+#include "port/events/list/PlayerEvent.h"
 #include "port/mods/PortEnhancements.h"
 
 u32 unused80339F10;
@@ -789,9 +789,12 @@ static u32 set_mario_action_airborne(struct MarioState *m, u32 action, u32 actio
             m->forwardVel *= 0.8f;
             break;
 
-        case ACT_FLYING_TRIPLE_JUMP:
-            set_mario_y_vel_based_on_fspeed(m, 82.0f, 0.0f);
+        case ACT_FLYING_TRIPLE_JUMP: {
+            f32 launchVelocity = 82.0f;
+            CALL_EVENT(FlyingTripleJumpLaunch, m, &launchVelocity);
+            set_mario_y_vel_based_on_fspeed(m, launchVelocity, 0.0f);
             break;
+        }
 
         case ACT_WATER_JUMP:
         case ACT_HOLD_WATER_JUMP:
@@ -968,37 +971,41 @@ static u32 set_mario_action_cutscene(struct MarioState *m, u32 action, UNUSED u3
  * specific function if needed.
  */
 u32 set_mario_action(struct MarioState *m, u32 action, u32 actionArg) {
-    switch (action & ACT_GROUP_MASK) {
-        case ACT_GROUP_MOVING:
-            action = set_mario_action_moving(m, action, actionArg);
-            break;
+    CALL_CANCELLABLE_EVENT(PlayerSetAction, m, action, actionArg) {
+        switch (action & ACT_GROUP_MASK) {
+            case ACT_GROUP_MOVING:
+                action = set_mario_action_moving(m, action, actionArg);
+                break;
 
-        case ACT_GROUP_AIRBORNE:
-            action = set_mario_action_airborne(m, action, actionArg);
-            break;
+            case ACT_GROUP_AIRBORNE:
+                action = set_mario_action_airborne(m, action, actionArg);
+                break;
 
-        case ACT_GROUP_SUBMERGED:
-            action = set_mario_action_submerged(m, action, actionArg);
-            break;
+            case ACT_GROUP_SUBMERGED:
+                action = set_mario_action_submerged(m, action, actionArg);
+                break;
 
-        case ACT_GROUP_CUTSCENE:
-            action = set_mario_action_cutscene(m, action, actionArg);
-            break;
+            case ACT_GROUP_CUTSCENE:
+                action = set_mario_action_cutscene(m, action, actionArg);
+                break;
+        }
+
+        // Resets the sound played flags, meaning Mario can play those sound types again.
+        m->flags &= ~(MARIO_ACTION_SOUND_PLAYED | MARIO_MARIO_SOUND_PLAYED);
+
+        if (!(m->action & ACT_FLAG_AIR)) {
+            m->flags &= ~MARIO_UNKNOWN_18;
+        }
+
+        // Initialize the action information.
+        m->prevAction = m->action;
+        m->action = action;
+        m->actionArg = actionArg;
+        m->actionState = 0;
+        m->actionTimer = 0;
+    } else {
+        return FALSE;
     }
-
-    // Resets the sound played flags, meaning Mario can play those sound types again.
-    m->flags &= ~(MARIO_ACTION_SOUND_PLAYED | MARIO_MARIO_SOUND_PLAYED);
-
-    if (!(m->action & ACT_FLAG_AIR)) {
-        m->flags &= ~MARIO_UNKNOWN_18;
-    }
-
-    // Initialize the action information.
-    m->prevAction = m->action;
-    m->action = action;
-    m->actionArg = actionArg;
-    m->actionState = 0;
-    m->actionTimer = 0;
 
     return TRUE;
 }
@@ -1354,7 +1361,9 @@ void update_mario_geometry_inputs(struct MarioState *m) {
         }
 
     } else {
-        level_trigger_warp(m, WARP_OP_DEATH);
+        CALL_CANCELLABLE_EVENT(PlayerDeath, m, DEATH_TYPE_OUT_OF_BOUNDS) {
+            level_trigger_warp(m, WARP_OP_DEATH);
+        }
     }
 }
 
@@ -1721,34 +1730,36 @@ s32 execute_mario_action(UNUSED struct Object *o) {
         // which can lead to unexpected sub-frame behavior. Could potentially hang
         // if a loop of actions were found, but there has not been a situation found.
         while (inLoop) {
-            switch (gMarioState->action & ACT_GROUP_MASK) {
-                case ACT_GROUP_STATIONARY:
-                    inLoop = mario_execute_stationary_action(gMarioState);
-                    break;
+            CALL_CANCELLABLE_EVENT(PlayerExecuteAction, &inLoop) {
+                switch (gMarioState->action & ACT_GROUP_MASK) {
+                    case ACT_GROUP_STATIONARY:
+                        inLoop = mario_execute_stationary_action(gMarioState);
+                        break;
 
-                case ACT_GROUP_MOVING:
-                    inLoop = mario_execute_moving_action(gMarioState);
-                    break;
+                    case ACT_GROUP_MOVING:
+                        inLoop = mario_execute_moving_action(gMarioState);
+                        break;
 
-                case ACT_GROUP_AIRBORNE:
-                    inLoop = mario_execute_airborne_action(gMarioState);
-                    break;
+                    case ACT_GROUP_AIRBORNE:
+                        inLoop = mario_execute_airborne_action(gMarioState);
+                        break;
 
-                case ACT_GROUP_SUBMERGED:
-                    inLoop = mario_execute_submerged_action(gMarioState);
-                    break;
+                    case ACT_GROUP_SUBMERGED:
+                        inLoop = mario_execute_submerged_action(gMarioState);
+                        break;
 
-                case ACT_GROUP_CUTSCENE:
-                    inLoop = mario_execute_cutscene_action(gMarioState);
-                    break;
+                    case ACT_GROUP_CUTSCENE:
+                        inLoop = mario_execute_cutscene_action(gMarioState);
+                        break;
 
-                case ACT_GROUP_AUTOMATIC:
-                    inLoop = mario_execute_automatic_action(gMarioState);
-                    break;
+                    case ACT_GROUP_AUTOMATIC:
+                        inLoop = mario_execute_automatic_action(gMarioState);
+                        break;
 
-                case ACT_GROUP_OBJECT:
-                    inLoop = mario_execute_object_action(gMarioState);
-                    break;
+                    case ACT_GROUP_OBJECT:
+                        inLoop = mario_execute_object_action(gMarioState);
+                        break;
+                }
             }
         }
 

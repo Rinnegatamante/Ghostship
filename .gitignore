@@ -57,6 +57,7 @@ build/*
 *.sav
 *.o2r
 *.map
+default.sav.bak
 .assets-local.txt
 
 build/
@@ -101,3 +102,14 @@ modding/
 node_modules
 /src/port/build.c
 /properties.h
+mods/
+randomizer/
+!/src/port/mods/
+saves/
+workspace/*
+!workspace/template
+workspace/template/output/*
+!workspace/template/output/manifest.json
+*.pem
+.tcc
+mods-*

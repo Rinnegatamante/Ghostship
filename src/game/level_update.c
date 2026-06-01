@@ -30,7 +30,8 @@
 #include "rumble_init.h"
 
 #include "port/ui/cvar_prefixes.h"
-#include "port/hooks/list/EngineEvent.h"
+#include "port/events/list/EngineEvent.h"
+#include "port/events/list/PlayerEvent.h"
 #include "port/mods/PortEnhancements.h"
 
 #define PLAY_MODE_NORMAL 0
@@ -404,6 +405,7 @@ void init_mario_after_warp(void) {
     }
 
     reset_camera(gCurrentArea->camera);
+    CALL_EVENT(WarpEnd, gCurrLevelNum, gCurrAreaIndex);
     sWarpDest.type = WARP_TYPE_NOT_WARPING;
     sDelayedWarpOp = WARP_OP_NONE;
 
@@ -625,6 +627,7 @@ void initiate_warp(s16 destLevel, s16 destArea, s16 destWarpNode, s32 arg3) {
     sWarpDest.areaIdx = destArea;
     sWarpDest.nodeId = destWarpNode;
     sWarpDest.arg = arg3;
+    CALL_EVENT(WarpStart, destLevel, destArea, destWarpNode);
 }
 
 // From Surface 0xD3 to 0xFC
@@ -662,6 +665,7 @@ void initiate_painting_warp(void) {
             if (gMarioState->action & ACT_FLAG_INTANGIBLE) {
                 play_painting_eject_sound();
             } else if (pWarpNode->id != 0) {
+                CALL_EVENT(ChangeLevel, 0, pWarpNode, 0);
                 warpNode = *pWarpNode;
 
                 if (!(warpNode.destLevel & 0x80)) {
@@ -726,15 +730,19 @@ s16 level_trigger_warp(struct MarioState *m, s32 warpOp) {
                 play_transition(WARP_TRANSITION_FADE_INTO_MARIO, 0x20, 0x00, 0x00, 0x00);
                 break;
 
-            case WARP_OP_DEATH:
+            case WARP_OP_DEATH: {
                 if (m->numLives == 0) {
                     sDelayedWarpOp = WARP_OP_GAME_OVER;
+                }
+                if(is_sequence_playing(SEQ_EVENT_BOSS) || is_sequence_playing(SEQ_LEVEL_BOSS_KOOPA) || is_sequence_playing(SEQ_LEVEL_BOSS_KOOPA_FINAL)) {
+                    CALL_EVENT(BossBattleEnded);
                 }
                 sDelayedWarpTimer = 48;
                 sSourceWarpNodeId = WARP_NODE_DEATH;
                 play_transition(WARP_TRANSITION_FADE_INTO_BOWSER, 0x30, 0x00, 0x00, 0x00);
                 play_sound(SOUND_MENU_BOWSER_LAUGH, gGlobalSoundSource);
                 break;
+            }
 
             case WARP_OP_WARP_FLOOR:
                 sSourceWarpNodeId = WARP_NODE_WARP_FLOOR;
@@ -743,6 +751,7 @@ s16 level_trigger_warp(struct MarioState *m, s32 warpOp) {
                         sDelayedWarpOp = WARP_OP_GAME_OVER;
                     } else {
                         sSourceWarpNodeId = WARP_NODE_DEATH;
+                        CALL_EVENT(PlayerDeath, gMarioState, DEATH_TYPE_FALL);
                     }
                 }
                 sDelayedWarpTimer = 20;
@@ -869,11 +878,13 @@ void initiate_delayed_warp(void) {
 
                 default:
                     warpNode = area_get_warp_node(sSourceWarpNodeId);
-
-                    initiate_warp(warpNode->node.destLevel & 0x7F, warpNode->node.destArea,
-                                  warpNode->node.destNode, sDelayedWarpArg);
+                    
+                    CALL_EVENT(ChangeLevel, sSourceWarpNodeId, &warpNode->node, &sDelayedWarpArg);
+                    initiate_warp(warpNode->node.destLevel & 0x7F, warpNode->node.destArea, warpNode->node.destNode,
+                                      sDelayedWarpArg);
 
                     check_if_should_set_warp_checkpoint(&warpNode->node);
+
                     if (sWarpDest.type != WARP_TYPE_CHANGE_LEVEL) {
                         level_set_transition(2, NULL);
                     }
@@ -1017,6 +1028,7 @@ s32 play_mode_paused(void) {
         if (gDebugLevelSelect) {
             fade_into_special_warp(-9, 1);
         } else {
+            CALL_EVENT(ExitLevel, gMenuOptSelectIndex);
             initiate_warp(LEVEL_CASTLE, 1, 0x1F, 0);
             fade_into_special_warp(0, 0);
             gSavedCourseNum = COURSE_NONE;
@@ -1320,5 +1332,6 @@ s32 lvl_set_current_level(UNUSED s16 arg0, s32 levelNum) {
  */
 s32 lvl_play_the_end_screen_sound(UNUSED s16 arg0, UNUSED s32 arg1) {
     play_sound(SOUND_MENU_THANK_YOU_PLAYING_MY_GAME, gGlobalSoundSource);
+    CALL_EVENT(GameEnded);
     return 1;
 }

@@ -7,7 +7,7 @@
 #include <libultraship.h>
 #include <libultra/gbi.h>
 #include "macros.h"
-#include "config.h"
+#include "sm64_config.h"
 
 // Certain functions are marked as having return values, but do not
 // actually return a value. This causes undefined behavior, which we'd rather
@@ -28,6 +28,11 @@ struct Controller {
 #if ENABLE_RUMBLE
   /*0x1C*/ s32 port;
 #endif
+  /*0x20*/ s16 rawStick2X;
+  /*0x22*/ s16 rawStick2Y;
+  /*0x24*/ float stick2X;        // [-64, 64] positive is right
+  /*0x28*/ float stick2Y;        // [-64, 64] positive is up
+  /*0x2C*/ float stick2Mag;      // distance from center [0, 64]
 };
 
 typedef f32 Vec2f[2];
@@ -102,6 +107,7 @@ struct GraphNode {
     /*0x08*/ struct GraphNode *next;
     /*0x0C*/ struct GraphNode *parent;
     /*0x10*/ struct GraphNode *children;
+    u32 uid;
 };
 
 struct AnimInfo {
@@ -208,6 +214,8 @@ struct Object {
     /*0x218*/ void *collisionData;
     /*0x21C*/ Mat4 transform;
     /*0x25C*/ void *respawnInfo;
+    /*0x260*/ u32 modelId;
+    /*0x264*/ bool custom;
 };
 
 struct ObjectHitbox {
