@@ -1755,10 +1755,15 @@ void Interpreter::GfxSpVertex(size_t n_vertices, size_t dest_index, const F3DVtx
         if (mRsp->geometry_mode & G_FOG) {
             if (fabsf(w) < 0.001f) {
                 // To avoid division by zero
-                w = copysignf(0.001f, w);
+                w = 0.001f;
             }
 
-            float fog_z = z / w * mRsp->fog_mul + mRsp->fog_offset;
+            float winv = 1.0f / w;
+            if (winv < 0.0f) {
+                winv = std::numeric_limits<int16_t>::max();
+			}
+
+            float fog_z = z * winv * mRsp->fog_mul + mRsp->fog_offset;
             fog_z = FAST_CLAMP(fog_z, 0.0f, 255.0f);
             d->color.a = fog_z; // Use alpha variable to store fog factor
         } else {
