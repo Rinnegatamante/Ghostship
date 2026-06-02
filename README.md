@@ -1,9 +1,9 @@
 # Ghostship Vita
 
-This is a port of Ghostship (v.1.0.2 with some improvements from develop branch) for PSVita.
+This is a port of Ghostship (v.2.0.0 with some improvements from develop branch) for PSVita.
 
 ## Setup Instructions
-- Download [Ghostship v.1.0.2](https://github.com/HarbourMasters/Ghostship/releases/tag/1.0.2) for PC.
+- Download [Ghostship v.2.0.0](https://github.com/HarbourMasters/Ghostship/releases/tag/2.0.0) for PC.
 - Follow its instructions to generate `sm64.o2r`.
 - Extract `ghostship.zip` from the Release tab in `ux0:data`.
 - Place `sm64.o2r` and `ghostship.o2r` in `ux0:data/ghostship`.
