@@ -291,6 +291,354 @@ void Achievements_Save(IEvent* event) {
     }
 }
 
+void ChainChompRelease_func(IEvent* event) {
+    if (!HAS_ACHIEVEMENTS(selectedFile)) {
+        return;
+    }
+		
+    Achievement_Progress("ReleaseChainChomp");
+}
+
+void ItemCollected_func(IEvent* event) {
+    if (!HAS_ACHIEVEMENTS(selectedFile)) {
+        return;
+    }
+
+    const ItemCollected* ev = reinterpret_cast<ItemCollected*>(event);
+    if (ev->type == TYPE_STAR) {
+        const int16_t slot = gCurrSaveFileNum - 1;
+        const uint32_t starFlags = save_file_get_star_flags(slot, gCurrCourseNum - 1);
+        const uint32_t starIndex = (ev->object->oBehParams) >> 24 & 0x1F;
+        const bool grandStar = (ev->object->oInteractionSubtype & 0x800) != 0;
+        SPDLOG_INFO("Star Collected: course {}, star index {}, currActNum {}, star flags {:08b}", gCurrCourseNum,
+                    starIndex, gCurrActNum, starFlags);
+        SPDLOG_INFO("Collected already? {}\nGrand Star? {}", (starFlags & (1 << starIndex)) != 0, grandStar);
+
+        if (!(starFlags & (1 << starIndex)) && !grandStar) {
+            Achievement_ProgressByCategory(AchievementCategory::Stars, 1);
+        }
+
+        if (ev->marioState->numCoins >= 100 and starIndex == 6) {
+            Achievement_Progress("Get100CoinStar");
+        }
+
+        // If we only rely on the save's star flags, this won't trigger until we collect
+        // an already collected star. Instead, we need to check whether the not-collected
+        // star *would* complete the set and progress the achievement.
+        if ((starFlags | (1 << starIndex)) == 0x3F) {
+            Achievement_Progress("Get6MainStars");
+        }
+
+        // For these, we have to factor in the star that was just collected,
+        // since star save flags aren't updated by this point.
+        // BOB, WF, JRB, CCM, BBH
+        SPDLOG_INFO(
+            "TOTAL STARS:\nFLOOR 1: {}\nBASEMENT: {}\nFLOOR 2: {}\nCOURSE STARS: {}\nCASTLE STARS: {}\nALL "
+            "STARS: {}",
+            save_file_get_total_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_BOB), COURSE_NUM_TO_INDEX(COURSE_BBH)),
+            save_file_get_total_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_HMC), COURSE_NUM_TO_INDEX(COURSE_DDD)),
+            save_file_get_total_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_SL), COURSE_NUM_TO_INDEX(COURSE_RR)),
+            save_file_get_total_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_BOB), COURSE_NUM_TO_INDEX(COURSE_RR)),
+            save_file_get_course_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_NONE)),
+            save_file_get_total_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_MIN), COURSE_NUM_TO_INDEX(COURSE_MAX)));
+        if (save_file_get_total_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_BOB), COURSE_NUM_TO_INDEX(COURSE_BBH)) +
+                1 >=
+            35) {
+            Achievement_Progress("GetAllStarsInFloor1");
+        }
+
+        // HMC, LLL, SSL, DDD
+        if (save_file_get_total_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_HMC), COURSE_NUM_TO_INDEX(COURSE_DDD)) +
+                1 >=
+            28) {
+            Achievement_Progress("GetAllStarsInBasement");
+        }
+
+        // SL, WDW, TTM, THI, TTC, RR
+        if (save_file_get_total_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_SL), COURSE_NUM_TO_INDEX(COURSE_RR)) +
+                1 >=
+            42) {
+            Achievement_Progress("GetAllStarsInFloor2");
+        }
+
+        if (save_file_get_total_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_BOB), COURSE_NUM_TO_INDEX(COURSE_RR)) +
+                1 >=
+            105) {
+            Achievement_Progress("GetAllCourseStars");
+        }
+
+        if (save_file_get_total_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_BONUS_STAGES),
+                                           COURSE_NUM_TO_INDEX(COURSE_MAX)) +
+                1 >=
+            15) {
+            Achievement_Progress("GetAllCastleStars");
+        }
+
+        if (save_file_get_total_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_MIN), COURSE_NUM_TO_INDEX(COURSE_MAX)) +
+                1 >=
+            120) {
+            Achievement_Progress("Get120Stars");
+        }
+
+        u8 starCount = 0;
+
+        // Calculate racing stars obtained
+        for (const auto& [courseNum, courseStar] : racingStars) {
+            if (Achievement_CheckIfStarObtained(courseNum, courseStar) ||
+                (gCurrCourseNum == courseNum && starIndex == courseStar)) {
+                starCount++;
+            }
+        }
+        if (starCount == racingStars.size()) {
+            Achievement_Progress("BeatEveryRace");
+        }
+
+        // gMetalCapStars should be checked bitwise, to ensure that we can remember
+        // which stars were done metal-less and assign as necessary.
+        for (int i = 0; i < metalCapStars.size(); i++) {
+            s16 courseNum = metalCapStars[i].first;
+            s16 courseStar = metalCapStars[i].second;
+            // check to see if we don't have it...bitwise
+            if (!(gMetalCapStars & (1 << i))) {
+                // check if what we just collected was it
+                if (gCurrCourseNum == courseNum && starIndex == courseStar) {
+                    // check if mario isn't metal
+                    if ((ev->marioState->flags & MARIO_METAL_CAP) == 0) {
+                        gMetalCapStars |= (1 << i);
+                    }
+                }
+            }
+        }
+
+        // 7 is (1 << (0 + 1 + 2)); therefore, 7 can be used to check for all metal stars.
+        if (gMetalCapStars == 7) {
+            Achievement_Progress("GrabSwimmingStars");
+        }
+    }
+
+    if (ev->type == TYPE_COIN) {
+        SPDLOG_INFO("Coin Collected: {}", ev->marioState->numCoins + 1);
+        gCoinsCollected += ev->object->oDamageOrCoinValue;
+
+        if (gCourseCoinLimits.contains(gCurrCourseNum) &&
+            ev->marioState->numCoins + 1 >= gCourseCoinLimits[gCurrCourseNum]) {
+            Achievement_Progress("GetAllCoinsOneLevel");
+        }
+    }
+}
+
+void CapSwitchActivated_func(IEvent* event) {
+    if (!HAS_ACHIEVEMENTS(selectedFile)) {
+        return;
+    }
+
+    const CapSwitchActivated* ev = reinterpret_cast<CapSwitchActivated*>(event);
+
+    SPDLOG_INFO("Cap Switch Activated: {}", static_cast<int>(ev->type));
+
+    switch (ev->type) {
+        case CAP_SWITCH_WING:
+            Achievement_Progress("UnlockWingCap");
+            break;
+        case CAP_SWITCH_METAL:
+            Achievement_Progress("UnlockMetalCap");
+            break;
+        case CAP_SWITCH_VANISH:
+            Achievement_Progress("UnlockVanishCap");
+            break;
+    }
+}
+
+void BossDefeated_func(IEvent* event) {
+    if (!HAS_ACHIEVEMENTS(selectedFile)) {
+        return;
+    }
+
+    const BossDefeated* ev = reinterpret_cast<BossDefeated*>(event);
+
+    switch (ev->type) {
+        case BOSS_TYPE_KING_BOBOMB:
+            Achievement_Progress("DefeatKingBobomb");
+            break;
+        case BOSS_TYPE_MR_I:
+            Achievement_Progress("DefeatMrI");
+            break;
+        case BOSS_TYPE_WIGGLER:
+            Achievement_Progress("DefeatWiggler");
+            break;
+        case BOSS_TYPE_EYEROK:
+            Achievement_Progress("DefeatEyerok");
+            break;
+        case BOSS_TYPE_KING_WHOMP:
+            Achievement_Progress("DefeatKingWhomp");
+            break;
+        case BOSS_TYPE_BOWSER_BITDW:
+            Achievement_Progress("DefeatBowser1");
+            break;
+        case BOSS_TYPE_BOWSER_BITFS:
+            Achievement_Progress("DefeatBowser2");
+            break;
+        case BOSS_TYPE_BOWSER_BITS:
+            if (save_file_get_total_star_count(gCurrSaveFileNum - 1, COURSE_MIN - 1, COURSE_MAX - 1) >= 120) {
+                Achievement_Progress("DefeatBowser3WithAllStars");
+                Achievement_Progress("DefeatBowser3");
+            } else {
+                Achievement_Progress("DefeatBowser3");
+            }
+        default:
+            break;
+    }
+}
+
+void GameFrameUpdate_func(IEvent* event) {
+        if (!HAS_ACHIEVEMENTS(selectedFile)) {
+        return;
+    }
+
+    const Object* interactObj = gMarioState->interactObj;
+
+    if (interactObj != nullptr) {
+        if (interactObj->behavior == segmented_to_virtual(bhvYoshi)) {
+            Achievement_Progress("TalkWithYoshi");
+        }
+    }
+
+    //! This currently checks for ALL Bullies.
+    if (gCurrLevelNum == LEVEL_LLL && gCurrAreaIndex != 2) {
+        const int count = Achievement_GetObjectCount({ MODEL_BULLY, MODEL_BULLY_BOSS });
+        if (count == 0) {
+            Achievement_Progress("DefeatAllBigBullies");
+        }
+    }
+
+    //! This currently checks for ALL Boos.
+    if (gCurrLevelNum == LEVEL_BBH) {
+        const int count = Achievement_GetObjectCount({ MODEL_BOO });
+        if (count == 0) {
+            Achievement_Progress("DefeatAllBooses");
+        }
+    }
+}
+
+void MusicChanged_func(IEvent* event) {
+    if (!HAS_ACHIEVEMENTS(selectedFile)) {
+        return;
+    }
+
+    const MusicChanged* ev = reinterpret_cast<MusicChanged*>(event);
+    SPDLOG_INFO("Music changed: seqId={}", ev->seqId);
+
+    // Just checking if this works...
+    if (ev->seqId == SEQ_LEVEL_BOSS_KOOPA) {
+        CALL_EVENT(BossBattleStarted, BOSS_BATTLE_KOOPA);
+    } else if (ev->seqId == SEQ_LEVEL_BOSS_KOOPA_FINAL) {
+        CALL_EVENT(BossBattleStarted, BOSS_BATTLE_KOOPA_FINAL);
+    }
+}
+
+void BossBattleStarted_func(IEvent* event) {
+    if (!HAS_ACHIEVEMENTS(selectedFile)) {
+        return;
+    }
+
+    bossBattleType = reinterpret_cast<BossBattleStarted*>(event)->type;
+    SPDLOG_INFO("Boss battle started: {}", static_cast<int>(bossBattleType));
+}
+
+void BossBattleEnded_func(IEvent* event) {
+    if (!HAS_ACHIEVEMENTS(selectedFile)) {
+        return;
+    }
+
+    bossBattleType = BOSS_BATTLE_NONE;
+    SPDLOG_INFO("Boss battle ended");
+}
+
+void PlayerDeath_func(IEvent* event) {
+    const PlayerDeath* ev = reinterpret_cast<PlayerDeath*>(event);
+
+    if (!HAS_ACHIEVEMENTS(selectedFile)) {
+        return;
+    }
+
+    switch (bossBattleType) {
+        case BOSS_BATTLE_KOOPA:
+        case BOSS_BATTLE_KOOPA_FINAL:
+            Achievement_Progress("DeathByBowser");
+            break;
+        case BOSS_BATTLE_GENERIC:
+            Achievement_Progress("DeathByBoss");
+            break;
+        default:
+            break;
+    }
+
+    switch (ev->type) {
+        case DEATH_TYPE_FALL:
+            Achievement_Progress("DeathByFalling");
+            break;
+        case DEATH_TYPE_QUICKSAND:
+            Achievement_Progress("DeathByQuickSand");
+            break;
+        case DEATH_TYPE_SQUISHED:
+            Achievement_Progress("DeathByCrushing");
+            break;
+        case DEATH_TYPE_DROWNING:
+        case DEATH_TYPE_WHIRLPOOL:
+            Achievement_Progress("DeathByDrowning");
+            break;
+        case DEATH_TYPE_LAVA:
+        case DEATH_TYPE_FIRE:
+            Achievement_Progress("DeathByFire");
+            break;
+        // case DEATH_TYPE_EATEN:
+        //     Achievement_Progress("DeathByBeingEaten");
+        //     break;
+        default: {
+            Achievement_Progress("DeathByEnemy");
+            break;
+        }
+    }
+}
+
+void PlayerSetAction_func(IEvent* event) {
+    const PlayerSetAction* ev = reinterpret_cast<PlayerSetAction*>(event);
+
+    if (!HAS_ACHIEVEMENTS(selectedFile)) {
+        return;
+    }
+
+    // SPDLOG_INFO("ExecuteAction {:X}", ev->action); // This gets really noisy
+
+    switch (ev->action) {
+        case ACT_BEGIN_SLIDING:
+            Achievement_Progress("Slide20Times");
+            break;
+        case ACT_JUMP:
+        case ACT_BACKFLIP:
+        case ACT_JUMP_KICK:
+        case ACT_DOUBLE_JUMP:
+        case ACT_TRIPLE_JUMP:
+        case ACT_LONG_JUMP:
+        case ACT_SIDE_FLIP: // TODO: not currently counting this, do we keep this?
+            Achievement_Progress("Jump1000Times");
+            break;
+        case ACT_READING_NPC_DIALOG:
+            Achievement_Progress("Talk25Times");
+            break;
+        default:
+            break;
+    }
+}
+
+void GameEnded_func(IEvent* event) {
+    if (!HAS_ACHIEVEMENTS(selectedFile)) {
+        return;
+    }
+
+    Achievement_Progress("WatchEnding");
+}
+
 void Achievements_Init() {
     for (auto& [id, achievement] : gAchievementList) {
         gAchievementProgress[id] = { 0, false };
@@ -300,355 +648,20 @@ void Achievements_Init() {
     // Register event listeners
     REGISTER_LISTENER(OnGameFileLoad, EVENT_PRIORITY_NORMAL, Achievements_Load);
     REGISTER_LISTENER(OnGameFileSave, EVENT_PRIORITY_NORMAL, Achievements_Save);
-
-    REGISTER_LISTENER(ItemCollected, EVENT_PRIORITY_NORMAL, [](IEvent* event) {
-        if (!HAS_ACHIEVEMENTS(selectedFile)) {
-            return;
-        }
-
-        const ItemCollected* ev = reinterpret_cast<ItemCollected*>(event);
-        if (ev->type == TYPE_STAR) {
-            const int16_t slot = gCurrSaveFileNum - 1;
-            const uint32_t starFlags = save_file_get_star_flags(slot, gCurrCourseNum - 1);
-            const uint32_t starIndex = (ev->object->oBehParams) >> 24 & 0x1F;
-            const bool grandStar = (ev->object->oInteractionSubtype & 0x800) != 0;
-            SPDLOG_INFO("Star Collected: course {}, star index {}, currActNum {}, star flags {:08b}", gCurrCourseNum,
-                        starIndex, gCurrActNum, starFlags);
-            SPDLOG_INFO("Collected already? {}\nGrand Star? {}", (starFlags & (1 << starIndex)) != 0, grandStar);
-
-            if (!(starFlags & (1 << starIndex)) && !grandStar) {
-                Achievement_ProgressByCategory(AchievementCategory::Stars, 1);
-            }
-
-            if (ev->marioState->numCoins >= 100 and starIndex == 6) {
-                Achievement_Progress("Get100CoinStar");
-            }
-
-            // If we only rely on the save's star flags, this won't trigger until we collect
-            // an already collected star. Instead, we need to check whether the not-collected
-            // star *would* complete the set and progress the achievement.
-            if ((starFlags | (1 << starIndex)) == 0x3F) {
-                Achievement_Progress("Get6MainStars");
-            }
-
-            // For these, we have to factor in the star that was just collected,
-            // since star save flags aren't updated by this point.
-            // BOB, WF, JRB, CCM, BBH
-            SPDLOG_INFO(
-                "TOTAL STARS:\nFLOOR 1: {}\nBASEMENT: {}\nFLOOR 2: {}\nCOURSE STARS: {}\nCASTLE STARS: {}\nALL "
-                "STARS: {}",
-                save_file_get_total_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_BOB), COURSE_NUM_TO_INDEX(COURSE_BBH)),
-                save_file_get_total_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_HMC), COURSE_NUM_TO_INDEX(COURSE_DDD)),
-                save_file_get_total_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_SL), COURSE_NUM_TO_INDEX(COURSE_RR)),
-                save_file_get_total_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_BOB), COURSE_NUM_TO_INDEX(COURSE_RR)),
-                save_file_get_course_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_NONE)),
-                save_file_get_total_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_MIN), COURSE_NUM_TO_INDEX(COURSE_MAX)));
-            if (save_file_get_total_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_BOB), COURSE_NUM_TO_INDEX(COURSE_BBH)) +
-                    1 >=
-                35) {
-                Achievement_Progress("GetAllStarsInFloor1");
-            }
-
-            // HMC, LLL, SSL, DDD
-            if (save_file_get_total_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_HMC), COURSE_NUM_TO_INDEX(COURSE_DDD)) +
-                    1 >=
-                28) {
-                Achievement_Progress("GetAllStarsInBasement");
-            }
-
-            // SL, WDW, TTM, THI, TTC, RR
-            if (save_file_get_total_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_SL), COURSE_NUM_TO_INDEX(COURSE_RR)) +
-                    1 >=
-                42) {
-                Achievement_Progress("GetAllStarsInFloor2");
-            }
-
-            if (save_file_get_total_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_BOB), COURSE_NUM_TO_INDEX(COURSE_RR)) +
-                    1 >=
-                105) {
-                Achievement_Progress("GetAllCourseStars");
-            }
-
-            if (save_file_get_total_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_BONUS_STAGES),
-                                               COURSE_NUM_TO_INDEX(COURSE_MAX)) +
-                    1 >=
-                15) {
-                Achievement_Progress("GetAllCastleStars");
-            }
-
-            if (save_file_get_total_star_count(slot, COURSE_NUM_TO_INDEX(COURSE_MIN), COURSE_NUM_TO_INDEX(COURSE_MAX)) +
-                    1 >=
-                120) {
-                Achievement_Progress("Get120Stars");
-            }
-
-            u8 starCount = 0;
-
-            // Calculate racing stars obtained
-            for (const auto& [courseNum, courseStar] : racingStars) {
-                if (Achievement_CheckIfStarObtained(courseNum, courseStar) ||
-                    (gCurrCourseNum == courseNum && starIndex == courseStar)) {
-                    starCount++;
-                }
-            }
-            if (starCount == racingStars.size()) {
-                Achievement_Progress("BeatEveryRace");
-            }
-
-            // gMetalCapStars should be checked bitwise, to ensure that we can remember
-            // which stars were done metal-less and assign as necessary.
-            for (int i = 0; i < metalCapStars.size(); i++) {
-                s16 courseNum = metalCapStars[i].first;
-                s16 courseStar = metalCapStars[i].second;
-                // check to see if we don't have it...bitwise
-                if (!(gMetalCapStars & (1 << i))) {
-                    // check if what we just collected was it
-                    if (gCurrCourseNum == courseNum && starIndex == courseStar) {
-                        // check if mario isn't metal
-                        if ((ev->marioState->flags & MARIO_METAL_CAP) == 0) {
-                            gMetalCapStars |= (1 << i);
-                        }
-                    }
-                }
-            }
-
-            // 7 is (1 << (0 + 1 + 2)); therefore, 7 can be used to check for all metal stars.
-            if (gMetalCapStars == 7) {
-                Achievement_Progress("GrabSwimmingStars");
-            }
-        }
-
-        if (ev->type == TYPE_COIN) {
-            SPDLOG_INFO("Coin Collected: {}", ev->marioState->numCoins + 1);
-            gCoinsCollected += ev->object->oDamageOrCoinValue;
-
-            if (gCourseCoinLimits.contains(gCurrCourseNum) &&
-                ev->marioState->numCoins + 1 >= gCourseCoinLimits[gCurrCourseNum]) {
-                Achievement_Progress("GetAllCoinsOneLevel");
-            }
-        }
-    });
-
-    REGISTER_LISTENER(CapSwitchActivated, EVENT_PRIORITY_NORMAL, [](IEvent* event) {
-        if (!HAS_ACHIEVEMENTS(selectedFile)) {
-            return;
-        }
-
-        const CapSwitchActivated* ev = reinterpret_cast<CapSwitchActivated*>(event);
-
-        SPDLOG_INFO("Cap Switch Activated: {}", static_cast<int>(ev->type));
-
-        switch (ev->type) {
-            case CAP_SWITCH_WING:
-                Achievement_Progress("UnlockWingCap");
-                break;
-            case CAP_SWITCH_METAL:
-                Achievement_Progress("UnlockMetalCap");
-                break;
-            case CAP_SWITCH_VANISH:
-                Achievement_Progress("UnlockVanishCap");
-                break;
-        }
-    });
-
-    REGISTER_LISTENER(BossDefeated, EVENT_PRIORITY_NORMAL, [](IEvent* event) {
-        if (!HAS_ACHIEVEMENTS(selectedFile)) {
-            return;
-        }
-
-        const BossDefeated* ev = reinterpret_cast<BossDefeated*>(event);
-
-        switch (ev->type) {
-            case BOSS_TYPE_KING_BOBOMB:
-                Achievement_Progress("DefeatKingBobomb");
-                break;
-            case BOSS_TYPE_MR_I:
-                Achievement_Progress("DefeatMrI");
-                break;
-            case BOSS_TYPE_WIGGLER:
-                Achievement_Progress("DefeatWiggler");
-                break;
-            case BOSS_TYPE_EYEROK:
-                Achievement_Progress("DefeatEyerok");
-                break;
-            case BOSS_TYPE_KING_WHOMP:
-                Achievement_Progress("DefeatKingWhomp");
-                break;
-            case BOSS_TYPE_BOWSER_BITDW:
-                Achievement_Progress("DefeatBowser1");
-                break;
-            case BOSS_TYPE_BOWSER_BITFS:
-                Achievement_Progress("DefeatBowser2");
-                break;
-            case BOSS_TYPE_BOWSER_BITS:
-                if (save_file_get_total_star_count(gCurrSaveFileNum - 1, COURSE_MIN - 1, COURSE_MAX - 1) >= 120) {
-                    Achievement_Progress("DefeatBowser3WithAllStars");
-                    Achievement_Progress("DefeatBowser3");
-                } else {
-                    Achievement_Progress("DefeatBowser3");
-                }
-            default:
-                break;
-        }
-    });
-
-    REGISTER_LISTENER(GameFrameUpdate, EVENT_PRIORITY_NORMAL, [](IEvent* event) {
-        if (!HAS_ACHIEVEMENTS(selectedFile)) {
-            return;
-        }
-
-        const Object* interactObj = gMarioState->interactObj;
-
-        if (interactObj != nullptr) {
-            if (interactObj->behavior == segmented_to_virtual(bhvYoshi)) {
-                Achievement_Progress("TalkWithYoshi");
-            }
-        }
-
-        //! This currently checks for ALL Bullies.
-        if (gCurrLevelNum == LEVEL_LLL && gCurrAreaIndex != 2) {
-            const int count = Achievement_GetObjectCount({ MODEL_BULLY, MODEL_BULLY_BOSS });
-            if (count == 0) {
-                Achievement_Progress("DefeatAllBigBullies");
-            }
-        }
-
-        //! This currently checks for ALL Boos.
-        if (gCurrLevelNum == LEVEL_BBH) {
-            const int count = Achievement_GetObjectCount({ MODEL_BOO });
-            if (count == 0) {
-                Achievement_Progress("DefeatAllBooses");
-            }
-        }
-    });
-
-    REGISTER_LISTENER(MusicChanged, EVENT_PRIORITY_NORMAL, [](IEvent* event) {
-        if (!HAS_ACHIEVEMENTS(selectedFile)) {
-            return;
-        }
-
-        const MusicChanged* ev = reinterpret_cast<MusicChanged*>(event);
-        SPDLOG_INFO("Music changed: seqId={}", ev->seqId);
-
-        // Just checking if this works...
-        if (ev->seqId == SEQ_LEVEL_BOSS_KOOPA) {
-            CALL_EVENT(BossBattleStarted, BOSS_BATTLE_KOOPA);
-        } else if (ev->seqId == SEQ_LEVEL_BOSS_KOOPA_FINAL) {
-            CALL_EVENT(BossBattleStarted, BOSS_BATTLE_KOOPA_FINAL);
-        }
-    });
-
-    REGISTER_LISTENER(BossBattleStarted, EVENT_PRIORITY_NORMAL, [](IEvent* event) {
-        if (!HAS_ACHIEVEMENTS(selectedFile)) {
-            return;
-        }
-
-        bossBattleType = reinterpret_cast<BossBattleStarted*>(event)->type;
-        SPDLOG_INFO("Boss battle started: {}", static_cast<int>(bossBattleType));
-    });
+    REGISTER_LISTENER(ItemCollected, EVENT_PRIORITY_NORMAL, ItemCollected_func);
+    REGISTER_LISTENER(CapSwitchActivated, EVENT_PRIORITY_NORMAL, CapSwitchActivated_func);
+    REGISTER_LISTENER(BossDefeated, EVENT_PRIORITY_NORMAL, BossDefeated_func);
+    REGISTER_LISTENER(GameFrameUpdate, EVENT_PRIORITY_NORMAL, GameFrameUpdate_func);
+    REGISTER_LISTENER(MusicChanged, EVENT_PRIORITY_NORMAL, MusicChanged_func);
+    REGISTER_LISTENER(BossBattleStarted, EVENT_PRIORITY_NORMAL, BossBattleStarted_func);
 
     //! This isn't triggering for koopa fights, since the music doesn't mute
-    REGISTER_LISTENER(BossBattleEnded, EVENT_PRIORITY_NORMAL, [](IEvent* event) {
-        if (!HAS_ACHIEVEMENTS(selectedFile)) {
-            return;
-        }
+    REGISTER_LISTENER(BossBattleEnded, EVENT_PRIORITY_NORMAL, BossBattleEnded_func);
 
-        bossBattleType = BOSS_BATTLE_NONE;
-        SPDLOG_INFO("Boss battle ended");
-    });
-
-    REGISTER_LISTENER(PlayerDeath, EVENT_PRIORITY_NORMAL, [](IEvent* event) {
-        const PlayerDeath* ev = reinterpret_cast<PlayerDeath*>(event);
-
-        if (!HAS_ACHIEVEMENTS(selectedFile)) {
-            return;
-        }
-
-        switch (bossBattleType) {
-            case BOSS_BATTLE_KOOPA:
-            case BOSS_BATTLE_KOOPA_FINAL:
-                Achievement_Progress("DeathByBowser");
-                break;
-            case BOSS_BATTLE_GENERIC:
-                Achievement_Progress("DeathByBoss");
-                break;
-            default:
-                break;
-        }
-
-        switch (ev->type) {
-            case DEATH_TYPE_FALL:
-                Achievement_Progress("DeathByFalling");
-                break;
-            case DEATH_TYPE_QUICKSAND:
-                Achievement_Progress("DeathByQuickSand");
-                break;
-            case DEATH_TYPE_SQUISHED:
-                Achievement_Progress("DeathByCrushing");
-                break;
-            case DEATH_TYPE_DROWNING:
-            case DEATH_TYPE_WHIRLPOOL:
-                Achievement_Progress("DeathByDrowning");
-                break;
-            case DEATH_TYPE_LAVA:
-            case DEATH_TYPE_FIRE:
-                Achievement_Progress("DeathByFire");
-                break;
-            // case DEATH_TYPE_EATEN:
-            //     Achievement_Progress("DeathByBeingEaten");
-            //     break;
-            default: {
-                Achievement_Progress("DeathByEnemy");
-                break;
-            }
-        }
-    });
-
-    REGISTER_LISTENER(PlayerSetAction, EVENT_PRIORITY_NORMAL, [](IEvent* event) {
-        const PlayerSetAction* ev = reinterpret_cast<PlayerSetAction*>(event);
-
-        if (!HAS_ACHIEVEMENTS(selectedFile)) {
-            return;
-        }
-
-        // SPDLOG_INFO("ExecuteAction {:X}", ev->action); // This gets really noisy
-
-        switch (ev->action) {
-            case ACT_BEGIN_SLIDING:
-                Achievement_Progress("Slide20Times");
-                break;
-            case ACT_JUMP:
-            case ACT_BACKFLIP:
-            case ACT_JUMP_KICK:
-            case ACT_DOUBLE_JUMP:
-            case ACT_TRIPLE_JUMP:
-            case ACT_LONG_JUMP:
-            case ACT_SIDE_FLIP: // TODO: not currently counting this, do we keep this?
-                Achievement_Progress("Jump1000Times");
-                break;
-            case ACT_READING_NPC_DIALOG:
-                Achievement_Progress("Talk25Times");
-                break;
-            default:
-                break;
-        }
-    });
-
-    REGISTER_LISTENER(ChainChompRelease, EVENT_PRIORITY_NORMAL, [](IEvent* event) {
-        if (!HAS_ACHIEVEMENTS(selectedFile)) {
-            return;
-        }
-
-        Achievement_Progress("ReleaseChainChomp");
-    });
-
-    REGISTER_LISTENER(GameEnded, EVENT_PRIORITY_NORMAL, [](IEvent* event) {
-        if (!HAS_ACHIEVEMENTS(selectedFile)) {
-            return;
-        }
-
-        Achievement_Progress("WatchEnding");
-    });
+    REGISTER_LISTENER(PlayerDeath, EVENT_PRIORITY_NORMAL, PlayerDeath_func);
+    REGISTER_LISTENER(PlayerSetAction, EVENT_PRIORITY_NORMAL, PlayerSetAction_func);
+    REGISTER_LISTENER(ChainChompRelease, EVENT_PRIORITY_NORMAL, ChainChompRelease_func);
+    REGISTER_LISTENER(GameEnded, EVENT_PRIORITY_NORMAL, GameEnded_func);
 }
 
 static RegisterShipInitFunc initFunc(Achievements_Init);
