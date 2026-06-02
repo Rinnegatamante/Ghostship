@@ -21,6 +21,11 @@
 #include "game/main.h"
 #include "ship/window/gui/resource/GuiTexture.h"
 
+#ifdef __vita__
+#include <vitasdk.h>
+#include "trophies.h"
+#endif
+
 static size_t order = 0;
 static int16_t selectedFile = 0;
 static BossBattleType bossBattleType = BOSS_BATTLE_NONE;
@@ -164,6 +169,9 @@ void Achievement_Progress(const std::string& id, const int32_t amount) {
             if (progress >= achievement->maxProgress) {
                 achieved = true;
                 Notification::EmitAchievement(achievement->icon, achievement->name, 0);
+#ifdef __vita__
+				trophies_unlock(achievement->order + 1);
+#endif
             } else {
                 SPDLOG_INFO("Progressed achievement {}: {}/{}", achievement->name, progress, achievement->maxProgress);
             }

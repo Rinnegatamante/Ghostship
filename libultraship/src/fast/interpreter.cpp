@@ -88,6 +88,25 @@ void *vglAllocFromScratch(size_t size);
 void vglFree(void*);
 void vglSetParamBufferSize(uint32_t size);
 uint8_t vglInitWithCustomThreshold(int pool_size, int width, int height, int ram_threshold, int cdram_threshold, int phycont_threshold, int cdlg_threshold, SceGxmMultisampleMode msaa);
+#ifdef HAVE_TROPHIES
+int trophies_init();
+void vglSwapBuffers(uint8_t);
+void warning(const char *msg) {
+    SceMsgDialogUserMessageParam msg_param;
+    sceClibMemset(&msg_param, 0, sizeof(SceMsgDialogUserMessageParam));
+    msg_param.buttonType = SCE_MSG_DIALOG_BUTTON_TYPE_OK;
+    msg_param.msg = (const SceChar8*)msg;
+    SceMsgDialogParam param;
+    sceMsgDialogParamInit(&param);
+    param.mode = SCE_MSG_DIALOG_MODE_USER_MSG;
+    param.userMsgParam = &msg_param;
+    sceMsgDialogInit(&param);
+    while (sceMsgDialogGetStatus() != SCE_COMMON_DIALOG_STATUS_FINISHED) {
+      vglSwapBuffers(1);
+    }
+    sceMsgDialogTerm();
+}
+#endif
 };
 #endif
 
@@ -138,7 +157,18 @@ Interpreter::Interpreter() {
     mRdp = new RDP();
 #ifdef __vita__
     vglSetParamBufferSize(6 * 1024 * 1024);
+#ifdef HAVE_TROPHIES
+    vglInitWithCustomThreshold(0, 960, 544, 4 * 1024 * 1024, 0, 0,  10 * 1024 * 1024, SCE_GXM_MULTISAMPLE_4X);
+    int r = trophies_init();
+	SceIoStat st;
+	if (r < 0 && sceIoGetstat("ux0:data/ghostship/trp.bin", &st) < 0) {
+        FILE *f = fopen("ux0:data/ghostship/trp.bin", "w");
+        fclose(f);
+        warning("This game features unlockable trophies but NoTrpDrm is not installed. If you want to be able to unlock trophies, please install it.");
+    }
+#else
     vglInitWithCustomThreshold(0, 960, 544, 4 * 1024 * 1024, 0, 0, 0, SCE_GXM_MULTISAMPLE_4X);
+#endif
     mBufVbo = (float *)vglAllocFromScratch(10 * 1024 * 1024);
 #else
     mBufVbo = new float[MAX_TRI_BUFFER * (32 * 3)];
