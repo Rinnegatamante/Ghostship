@@ -315,8 +315,11 @@ void Fast3dGui::CalculateGameViewport() {
     mainPos.x -= mTemporaryWindowPos.x;
     mainPos.y -= mTemporaryWindowPos.y;
     ImVec2 size = ImGui::GetContentRegionAvail();
-    mInterpreter.lock()->mCurDimensions.width = (uint32_t)(size.x * mInterpreter.lock()->mCurDimensions.internal_mul);
-    mInterpreter.lock()->mCurDimensions.height = (uint32_t)(size.y * mInterpreter.lock()->mCurDimensions.internal_mul);
+    uint32_t w = (uint32_t)(size.x * mInterpreter.lock()->mCurDimensions.internal_mul);
+    uint32_t h = (uint32_t)(size.y * mInterpreter.lock()->mCurDimensions.internal_mul);
+    mInterpreter.lock()->mCurDimensions.width = w;
+    mInterpreter.lock()->mCurDimensions.height = h;
+	mInterpreter.lock()->mCurAspectRatioDeltaForX = (4.0f / 3.0f) / ((float)w / (float)h);
     mInterpreter.lock()->mGameWindowViewport.x = (int16_t)mainPos.x;
     mInterpreter.lock()->mGameWindowViewport.y = (int16_t)mainPos.y;
     mInterpreter.lock()->mGameWindowViewport.width = (int16_t)size.x;
@@ -331,6 +334,7 @@ void Fast3dGui::CalculateGameViewport() {
         case 1: { // N64 Mode
             mInterpreter.lock()->mCurDimensions.width = 320;
             mInterpreter.lock()->mCurDimensions.height = 240;
+			mInterpreter.lock()->mCurAspectRatioDeltaForX = (4.0f / 3.0f) / (320.f / 240.f);
             /*
             const int sw = size.y * 320 / 240;
             mInterpreter.lock()->mGameWindowViewport.x += ((int)size.x - sw) / 2;
@@ -339,14 +343,20 @@ void Fast3dGui::CalculateGameViewport() {
         }
         case 2: { // 240p Widescreen
             const int vertRes = 240;
-            mInterpreter.lock()->mCurDimensions.width = vertRes * size.x / size.y;
-            mInterpreter.lock()->mCurDimensions.height = vertRes;
+            uint32_t w = (uint32_t)(vertRes * size.x / size.y);
+            uint32_t h = (uint32_t)(vertRes);
+            mInterpreter.lock()->mCurDimensions.width = w;
+            mInterpreter.lock()->mCurDimensions.height = h;
+			mInterpreter.lock()->mCurAspectRatioDeltaForX = (4.0f / 3.0f) / ((float)w / (float)h);
             break;
         }
         case 3: { // 480p Widescreen
             const int vertRes = 480;
-            mInterpreter.lock()->mCurDimensions.width = vertRes * size.x / size.y;
-            mInterpreter.lock()->mCurDimensions.height = vertRes;
+            uint32_t w = (uint32_t)(vertRes * size.x / size.y);
+            uint32_t h = (uint32_t)(vertRes);
+            mInterpreter.lock()->mCurDimensions.width = w;
+            mInterpreter.lock()->mCurDimensions.height = h;
+			mInterpreter.lock()->mCurAspectRatioDeltaForX = (4.0f / 3.0f) / ((float)w / (float)h);
             break;
         }
     }
@@ -473,6 +483,7 @@ void Fast3dGui::ApplyResolutionChanges() {
     // apply new dimensions
     mInterpreter.lock()->mCurDimensions.width = newWidth;
     mInterpreter.lock()->mCurDimensions.height = newHeight;
+	mInterpreter.lock()->mCurAspectRatioDeltaForX = (4.0f / 3.0f) / ((float)newWidth / (float)newHeight);
     // centring the image is done in Fast3dGui::DrawGame().
 }
 

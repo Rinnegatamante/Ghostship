@@ -533,6 +533,7 @@ class Interpreter {
     XYWidthHeight mNativeDimensions{};     // gfx_native_dimensions;
     XYWidthHeight mPrevNativeDimensions{}; // gfx_prev_native_dimensions;
     uintptr_t mGfxFrameBuffer{};
+	float mCurAspectRatioDeltaForX = (4.f / 3.f);
 
     unsigned int mMsaaLevel = 1;
     bool mDroppedFrame{};
