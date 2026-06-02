@@ -104,9 +104,25 @@ enum class Op {
     SetTextMatrix,
     SetMatrixPosRotScaleXY,
     SetApplyMatrixTransformations,
+	OpsCount
 };
 
 typedef pair<const void*, uintptr_t> label;
+
+}
+
+namespace robin_hood {
+    template<>
+    struct hash<label> {
+        size_t operator()(const label& l) const noexcept {
+            size_t h = hash_int((uint64_t)(uintptr_t)l.first);
+            h ^= hash_int((uint64_t)l.second) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            return h;
+        }
+    };
+}
+
+namespace {
 
 union Data {
     Data() {
@@ -293,13 +309,25 @@ union Data {
 };
 
 struct Path {
-    map<label, vector<Path>> children;
-    map<Op, vector<Data>> ops;
+    robin_hood::unordered_map<label, vector<Path>> children;
+    std::array<std::vector<Data>, static_cast<size_t>(Op::OpsCount)> ops;
     vector<pair<Op, size_t>> items;
+	
+	void reset() {
+		children.clear();
+		items.clear();
+		for (auto& v : ops) {
+            v.clear(); 
+        }
+	}
 };
 
 struct Recording {
     Path root_path;
+	
+	void reset() {
+		root_path.reset();
+	}
 };
 
 bool is_recording;
@@ -315,7 +343,7 @@ MtxF inv_actor_mtx;
 size_t inv_actor_mtx_path_index;
 
 Data& append(Op op) {
-    auto& m = current_path.back()->ops[op];
+    auto& m = current_path.back()->ops[(size_t)op];
     current_path.back()->items.emplace_back(op, m.size());
     return m.emplace_back();
 }
@@ -465,7 +493,7 @@ struct InterpolateCtx {
 
     void interpolate_branch(Path* old_path, Path* new_path) {
         for (auto& item : new_path->items) {
-            Data& new_op = new_path->ops[item.first][item.second];
+            Data& new_op = new_path->ops[(size_t)item.first][item.second];
 
             if (item.first == Op::OpenChild) {
                 if (auto it = old_path->children.find(new_op.open_child.key);
@@ -479,9 +507,9 @@ struct InterpolateCtx {
                 continue;
             }
 
-            if (auto it = old_path->ops.find(item.first); it != old_path->ops.end()) {
-                if (item.second < it->second.size()) {
-                    Data& old_op = it->second[item.second];
+            {
+                if (item.second < old_path->ops[(size_t)item.first].size()) {
+                    Data& old_op = old_path->ops[(size_t)item.first][item.second];
                     switch (item.first) {
                         case Op::OpenChild:
                         case Op::CloseChild:
@@ -910,8 +938,8 @@ bool check_if_recording() {
 }
 
 void FrameInterpolation_StartRecord(void) {
-    previous_recording = move(current_recording);
-    current_recording = {};
+    std::swap(previous_recording, current_recording);
+    current_recording.reset();
     sPrevSnow = sCurSnow;
     sCurSnow.dl = nullptr;
     sCurSnow.count = 0;

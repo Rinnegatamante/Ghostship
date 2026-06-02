@@ -49,7 +49,7 @@ LIBS = -lstorm -lgfxd -lzip -lbzip2 -lzstd -lz -lyaml-cpp -llzma -lssl -lcrypto 
 	-ltinyxml2 -lSDL2 -lvorbisfile -lvorbis -logg -lvitaGL -lvitashark -lSceShaccCgExt -ltaihen_stub -lmathneon -lSceAudioIn_stub \
 	-lSceIme_stub -lSceKernelDmacMgr_stub -lSceGxm_stub -lSceDisplay_stub -lSceTouch_stub -lSceHid_stub -lSceCtrl_stub -lSceNet_stub \
 	-lSceNetCtl_stub -lSceCommonDialog_stub -lSceAudio_stub -lSceSysmodule_stub -lSceMotion_stub -lSceAppUtil_stub \
-	-lSceAppMgr_stub -lSceShaccCg_stub -lScePower_stub
+	-lSceAppMgr_stub -lSceShaccCg_stub -lScePower_stub -lSceNpTrophy_stub
 
 FINAL_SOURCES := f
 
@@ -99,7 +99,7 @@ CXX = $(PREFIX)-g++
 CFLAGS = -g -Wl,-q,--allow-multiple-definition -O3 -ffast-math -fno-short-enums -fsigned-char \
 	$(foreach dir,$(INCLUDES),-I$(dir)) -fno-strict-aliasing \
 	-Wno-narrowing -DIMGUI_IMPL_OPENGL_ES2 -DSPDLOG_ACTIVE_LEVEL=6 \
-	-I$(VITASDK)/$(PREFIX)/include/SDL2 -DENABLE_OPENGL=1 \
+	-I$(VITASDK)/$(PREFIX)/include/SDL2 -DENABLE_OPENGL=1 -DHAVE_TROPHIES=1 \
 	-D_LANGUAGE_C -D_USE_MATH_DEFINES -DCIMGUI_DEFINE_ENUMS_AND_STRUCTS -DNAUDIO_SUPPORT \
 	-DAVOID_UB=1 -DF3D_OLD=1 -DF3D_GBI=1 -DGBI_FLOATS=1 \
 	-DVERSION_US=1 -DENABLE_RUMBLE=1 -DIMGUI_DEFINE_MATH_OPERATORS -DSM64_SUPPORT \
@@ -155,7 +155,8 @@ $(TARGET).vpk: $(TARGET).velf
 		-a livearea/icon0.png=sce_sys/icon0.png \
 		-a livearea/bg.png=sce_sys/livearea/contents/bg.png \
 		-a livearea/startup.png=sce_sys/livearea/contents/startup.png \
-		-a livearea/template.xml=sce_sys/livearea/contents/template.xml
+		-a livearea/template.xml=sce_sys/livearea/contents/template.xml \
+		-a livearea/TROPHY.TRP=sce_sys/trophy/GHST00001_00/TROPHY.TRP
 
 prepare: f $(OBJS_PREPARE)
 
