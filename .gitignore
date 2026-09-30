@@ -70,7 +70,11 @@ ghostship.cfg.json
 imgui.ini
 .DS_Store
 logs/
-debug/
+/debug/
+!libultraship/include/ship/debug/
+!libultraship/include/fast/debug/
+!libultraship/src/ship/debug/
+!libultraship/src/fast/debug/
 code/
 
 # Assets. Generally ignored, but ones with "custom" in the name are fine.

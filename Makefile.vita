@@ -44,7 +44,7 @@ INCLUDES := $(LUS_INCLUDES) $(TORCH_INCLUDES) \
 	src/audio src/buffers src/engine src/game src/goddard src/menu src/pc src/port src/port/Enhancements \
 	src/port/enhancements/game-interactor src/port/api textures src .
 
-LIBS = -lstorm -lgfxd -lzip -lbzip2 -lzstd -lz -lyaml-cpp -llzma -lssl -lcrypto -lstdc++ -lpng \
+LIBS = -lstorm -lzip -lbz2 -lzstd -lz -lyaml-cpp -llzma -lssl -lcrypto -lstdc++ -lpng \
 	-Wl,--whole-archive -lpthread -Wl,--no-whole-archive \
 	-ltinyxml2 -lSDL2 -lvorbisfile -lvorbis -logg -lvitaGL -lvitashark -lSceShaccCgExt -ltaihen_stub -lmathneon -lSceAudioIn_stub \
 	-lSceIme_stub -lSceKernelDmacMgr_stub -lSceGxm_stub -lSceDisplay_stub -lSceTouch_stub -lSceHid_stub -lSceCtrl_stub -lSceNet_stub \
@@ -143,7 +143,10 @@ CFLAGS = -g -Wl,-q,--allow-multiple-definition -O3 -ffast-math -fno-short-enums 
 	-DCVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\" \
 	-DCVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"
 
-CXXFLAGS = $(CFLAGS) -fexceptions -std=gnu++20 -fpermissive
+# Keep the upstream C11 asset-pointer policy with diagnostics visible.
+C_ONLY_FLAGS := -std=gnu11 -Wno-error=int-conversion -Wno-error=incompatible-pointer-types
+CFLAGS += $(C_ONLY_FLAGS)
+CXXFLAGS = $(filter-out $(C_ONLY_FLAGS),$(CFLAGS)) -fexceptions -std=gnu++20 -fpermissive
 ASFLAGS  = $(CFLAGS)
 
 all: $(TARGET).vpk
