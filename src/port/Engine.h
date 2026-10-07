@@ -67,7 +67,7 @@ class GameEngine {
     void AudioInit();
     void FinishInit();
     void StartFrame() const;
-    static void RunCommands(Gfx* Commands, const std::vector<FrameInterpolationResult>& replacements);
+    static void RunCommands(Gfx* Commands, std::vector<FrameInterpolationResult>& replacements);
     static uint32_t GetInterpolationFPS();
     static void HandleAudioThread();
     static void StartAudioFrame();
@@ -113,6 +113,7 @@ uint32_t OTRGetGameRenderHeight();
 
 // Engine related
 void GameEngine_ProcessGfxCommands(Gfx* commands);
+void GameEngine_WaitRendererIdle(void);
 uint32_t GameEngine_GetInterpolatedFPS();
 uint32_t GameEngine_GetSampleRate();
 uint32_t GameEngine_GetSamplesPerFrame();

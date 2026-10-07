@@ -948,8 +948,10 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
             context = nullptr;
             exit(0);
         }
+#ifndef __vita__
         // Process window events for resize, mouse, keyboard events
         wnd->HandleEvents();
+#endif
         UIWidgets::Colors themeColor =
             static_cast<UIWidgets::Colors>(CVarGetInteger(CVAR_SETTING("Menu.Theme"), UIWidgets::Colors::LightBlue));
         ImGui::PushStyleColor(ImGuiCol_TitleBgActive, UIWidgets::ColorValues.at(themeColor));
@@ -959,9 +961,13 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
         if (!wnd->IsFrameReady()) {
             continue;
         }
+#ifdef __vita__
+        gsFast3dWindow->BeginGuiOnlyFrame();
+#else
         gui->StartDraw();
         gsFast3dWindow->StartFrame();
         gsFast3dWindow->RunGuiOnly();
+#endif
         if (extracting && !ImGui::IsPopupOpen("ROM Extraction")) {
             ImGui::OpenPopup("ROM Extraction");
         }
@@ -1046,8 +1052,12 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
             ImGui::PopStyleColor(3);
             ImGui::PopStyleVar(2);
         }
+#ifdef __vita__
+        gsFast3dWindow->EndGuiOnlyFrame();
+#else
         gui->EndDraw();
         gsFast3dWindow->EndFrame();
+#endif
         ImGui::PopStyleColor(2);
     }
 #ifndef __vita__
@@ -1345,34 +1355,55 @@ uint32_t GameEngine::GetGameVersion() {
     return _gameVersion;
 }
 
-void GameEngine::RunCommands(Gfx* Commands, const std::vector<FrameInterpolationResult>& replacements) {
+void GameEngine::RunCommands(Gfx* Commands, std::vector<FrameInterpolationResult>& replacements) {
     auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetInstance()->GetWindow());
 
     if (wnd == nullptr) {
         return;
     }
 
+#ifndef __vita__
     auto interpreter = wnd->GetInterpreterWeak().lock().get();
-
     // Process window events for resize, mouse, keyboard events
     wnd->HandleEvents();
-
     interpreter->mInterpolationIndex = 0;
-    for (const auto& r : replacements) {
+#else
+    int32_t interpolationIndex = 0;
+#endif
+
+    for (auto& r : replacements) {
 #if defined(__SWITCH__) || defined(__vita__) // Switch LUS Needs to be updated, so for now lets keep it simple
+#ifdef __vita__
+        wnd->DrawAndRunGraphicsCommands(Commands, std::move(r.mtx), interpolationIndex++);
+#else
         wnd->DrawAndRunGraphicsCommands(Commands, r.mtx);
+#endif
 #else
         wnd->DrawAndRunGraphicsCommands(Commands, r.mtx, r.dl);
 #endif
+#ifndef __vita__
         interpreter->mInterpolationIndex++;
+#endif
     }
 
     bool curAltAssets = CVarGetInteger("gEnhancements.Mods.AlternateAssets", 1);
     if (prevAltAssets != curAltAssets) {
+#ifdef __vita__
+        wnd->WaitForRendererIdle();
+#endif
         prevAltAssets = curAltAssets;
         Ship::Context::GetInstance()->GetResourceManager()->SetAltAssetsEnabled(curAltAssets);
         gfx_texture_cache_clear();
     }
+}
+
+extern "C" void GameEngine_WaitRendererIdle() {
+#ifdef __vita__
+    auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetInstance()->GetWindow());
+    if (wnd != nullptr) {
+        wnd->WaitForRendererIdle();
+    }
+#endif
 }
 
 void GameEngine::ProcessGfxCommands(Gfx* commands) {
@@ -1449,8 +1480,12 @@ Fast::Interpreter* GameEngine_GetInterpreter() {
 }
 
 extern "C" float GameEngine_GetAspectRatio() {
+#ifdef __vita__
+    return 960.0f / 544.0f;
+#else
     auto interpreter = GameEngine_GetInterpreter();
     return interpreter->mCurDimensions.aspect_ratio;
+#endif
 }
 
 extern "C" CtlEntry* GameEngine_LoadBank(const uint8_t bankId) {
