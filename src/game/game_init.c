@@ -23,6 +23,9 @@
 #include "port/interpolation/FrameInterpolation.h"
 
 extern void mirror_mode_invert_input(void);
+#ifdef __vita__
+extern void GameEngine_WaitRendererIdle(void);
+#endif
 
 // First 3 controller slots
 struct Controller gControllers[3];
@@ -373,6 +376,9 @@ void display_and_vsync(void) {
     profiler_log_thread5_time(BEFORE_DISPLAY_LISTS);
     // osRecvMesg(&gGfxVblankQueue, &gMainReceivedMesg, OS_MESG_NOBLOCK);
     if (gGoddardVblankCallback != NULL) {
+#ifdef __vita__
+        GameEngine_WaitRendererIdle();
+#endif
         gGoddardVblankCallback();
         gGoddardVblankCallback = NULL;
     }
